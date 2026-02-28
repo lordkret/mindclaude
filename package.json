@@ -1,0 +1,22 @@
+{
+  "name": "mindclaude",
+  "version": "0.1.0",
+  "description": "MCP server for mindmap-based structured thinking in Claude Code",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "adm-zip": "^0.5.16",
+    "nanoid": "^5.1.5",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^22.13.5",
+    "typescript": "^5.7.3"
+  }
+}

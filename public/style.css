@@ -1,17 +1,17 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; }
-header { background: #16213e; padding: 8px 16px; border-bottom: 1px solid #0f3460; }
-.toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.toolbar h1 { font-size: 18px; color: #e94560; margin-right: 8px; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #1a1a2e; color: #e0e0e0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+header { background: #16213e; padding: 8px 16px; border-bottom: 1px solid #0f3460; flex-shrink: 0; }
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.toolbar h1 { font-size: 18px; color: #e94560; margin-right: 4px; }
 select, input, button { font-size: 14px; padding: 6px 12px; border: 1px solid #0f3460; border-radius: 4px; background: #16213e; color: #e0e0e0; }
-select { min-width: 200px; }
-button { cursor: pointer; background: #0f3460; transition: background 0.2s; }
+select { min-width: 160px; }
+button { cursor: pointer; background: #0f3460; transition: background 0.2s; white-space: nowrap; }
 button:hover:not(:disabled) { background: #e94560; }
 button:disabled { opacity: 0.4; cursor: default; }
 #status { font-size: 13px; color: #53c587; margin-left: auto; }
-#main { flex: 1; display: flex; overflow: hidden; }
-#jsmind-container { flex: 1; background: #1a1a2e; }
-#sidebar { width: 280px; background: #16213e; border-left: 1px solid #0f3460; padding: 12px; overflow-y: auto; }
+#main { flex: 1; display: flex; overflow: hidden; position: relative; }
+#jsmind-container { flex: 1; background: #1a1a2e; overflow: hidden; touch-action: none; }
+#sidebar { width: 280px; background: #16213e; border-left: 1px solid #0f3460; padding: 12px; overflow-y: auto; flex-shrink: 0; transition: transform 0.3s ease; }
 #sidebar h3 { font-size: 15px; margin-bottom: 8px; color: #e94560; }
 #sidebar h4 { font-size: 13px; margin: 12px 0 6px; }
 #rel-list { list-style: none; font-size: 13px; }
@@ -19,6 +19,14 @@ button:disabled { opacity: 0.4; cursor: default; }
 #rel-list .rel-remove { cursor: pointer; color: #e94560; font-size: 16px; }
 #rel-form input { width: 100%; margin-bottom: 6px; }
 #rel-form button { width: 100%; }
+
+/* Zoom controls */
+#zoom-controls { display: flex; gap: 4px; align-items: center; }
+#zoom-controls button { padding: 4px 10px; font-size: 16px; min-width: 36px; }
+#zoom-level { font-size: 12px; color: #888; min-width: 40px; text-align: center; }
+
+/* Sidebar toggle */
+#btn-sidebar { display: none; }
 
 /* jsMind theme overrides */
 jmnodes { background: transparent !important; }
@@ -28,3 +36,18 @@ jmnodes jmnode.selected { background: #0f3460 !important; border-color: #e94560 
 jmnodes jmnode.root { background: #e94560 !important; color: #fff !important; font-size: 16px !important; font-weight: bold; }
 jmnodes jmexpander { border-color: #e94560 !important; color: #e0e0e0 !important; background: #16213e !important; }
 jmnode.draggable-shadow { background: #0f3460 !important; opacity: 0.6; }
+
+/* Mobile */
+@media (max-width: 768px) {
+  .toolbar h1 { font-size: 15px; margin-right: 0; }
+  select { min-width: 120px; font-size: 13px; padding: 5px 8px; }
+  button { padding: 5px 8px; font-size: 13px; }
+  #status { display: none; }
+  #btn-sidebar { display: inline-block; }
+  #sidebar { position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; width: 260px; transform: translateX(100%); }
+  #sidebar.open { transform: translateX(0); }
+  #sidebar .close-sidebar { display: block; text-align: right; margin-bottom: 8px; }
+  jmnodes jmnode { padding: 4px 8px !important; font-size: 12px !important; }
+  jmnodes jmnode.root { font-size: 14px !important; }
+  #zoom-controls button { padding: 6px 14px; font-size: 18px; min-width: 44px; min-height: 44px; }
+}

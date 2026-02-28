@@ -3,20 +3,48 @@
 const API = "/api";
 let jm = null;
 let currentMap = null;
+let zoomScale = 1;
 
 const selector = document.getElementById("map-selector");
 const btnSave = document.getElementById("btn-save");
 const btnNew = document.getElementById("btn-new");
 const btnDelete = document.getElementById("btn-delete");
+const btnSidebar = document.getElementById("btn-sidebar");
+const btnCloseSidebar = document.getElementById("btn-close-sidebar");
+const sidebar = document.getElementById("sidebar");
 const status = document.getElementById("status");
 const relList = document.getElementById("rel-list");
 const btnAddRel = document.getElementById("btn-add-rel");
+const btnZoomIn = document.getElementById("btn-zoom-in");
+const btnZoomOut = document.getElementById("btn-zoom-out");
+const btnZoomFit = document.getElementById("btn-zoom-fit");
+const zoomLevel = document.getElementById("zoom-level");
 
 function setStatus(msg, isError) {
   status.textContent = msg;
   status.style.color = isError ? "#e94560" : "#53c587";
   if (!isError) setTimeout(() => { status.textContent = ""; }, 4000);
 }
+
+// --- Zoom ---
+
+function applyZoom(scale) {
+  zoomScale = Math.max(0.3, Math.min(3, scale));
+  const container = document.getElementById("jsmind-container");
+  const inner = container.querySelector("jmnodes");
+  const canvas = container.querySelector("canvas");
+  if (inner) inner.style.transform = `scale(${zoomScale})`;
+  if (inner) inner.style.transformOrigin = "center center";
+  if (canvas) {
+    canvas.style.transform = `scale(${zoomScale})`;
+    canvas.style.transformOrigin = "center center";
+  }
+  zoomLevel.textContent = Math.round(zoomScale * 100) + "%";
+}
+
+function zoomIn() { applyZoom(zoomScale + 0.15); }
+function zoomOut() { applyZoom(zoomScale - 0.15); }
+function zoomFit() { applyZoom(1); }
 
 // --- Map list ---
 
@@ -45,12 +73,12 @@ function initJsMind() {
     support_html: false,
     view: {
       engine: "canvas",
-      hmargin: 120,
-      vmargin: 60,
+      hmargin: 100,
+      vmargin: 50,
     },
     layout: {
-      hspace: 60,
-      vspace: 20,
+      hspace: 50,
+      vspace: 16,
     },
   };
   jm = new jsMind(options);
@@ -73,6 +101,8 @@ async function loadMap(name) {
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
     currentMap = name;
+    zoomScale = 1;
+    applyZoom(1);
     jm.show(data);
     btnSave.disabled = false;
     btnDelete.disabled = false;
@@ -148,6 +178,13 @@ async function deleteMap() {
   }
 }
 
+// --- Sidebar toggle (mobile) ---
+
+function toggleSidebar() {
+  sidebar.classList.toggle("open");
+  btnCloseSidebar.style.display = sidebar.classList.contains("open") ? "block" : "none";
+}
+
 // --- Relationships ---
 
 async function loadRelationships(name) {
@@ -214,12 +251,54 @@ async function addRelationship() {
   }
 }
 
+// --- Pinch-to-zoom (touch) ---
+
+let pinchStartDist = 0;
+let pinchStartScale = 1;
+
+function getTouchDist(e) {
+  const [a, b] = [e.touches[0], e.touches[1]];
+  return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+}
+
+const container = document.getElementById("jsmind-container");
+
+container.addEventListener("touchstart", (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    pinchStartDist = getTouchDist(e);
+    pinchStartScale = zoomScale;
+  }
+}, { passive: false });
+
+container.addEventListener("touchmove", (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dist = getTouchDist(e);
+    const scale = pinchStartScale * (dist / pinchStartDist);
+    applyZoom(scale);
+  }
+}, { passive: false });
+
+// Mouse wheel zoom
+container.addEventListener("wheel", (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    applyZoom(zoomScale - e.deltaY * 0.002);
+  }
+}, { passive: false });
+
 // --- Events ---
 
 selector.addEventListener("change", () => loadMap(selector.value));
 btnSave.addEventListener("click", saveMap);
 btnNew.addEventListener("click", createMap);
 btnDelete.addEventListener("click", deleteMap);
+btnSidebar.addEventListener("click", toggleSidebar);
+btnCloseSidebar.addEventListener("click", toggleSidebar);
+btnZoomIn.addEventListener("click", zoomIn);
+btnZoomOut.addEventListener("click", zoomOut);
+btnZoomFit.addEventListener("click", zoomFit);
 btnAddRel.addEventListener("click", addRelationship);
 
 // Ctrl+S to save

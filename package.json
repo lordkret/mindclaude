@@ -6,16 +6,19 @@
   "main": "build/index.js",
   "scripts": {
     "build": "tsc",
-    "watch": "tsc --watch"
+    "watch": "tsc --watch",
+    "start:web": "node build/web/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "adm-zip": "^0.5.16",
+    "express": "^4.21.2",
     "nanoid": "^5.1.5",
     "zod": "^3.24.2"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
+    "@types/express": "^5.0.0",
     "@types/node": "^22.13.5",
     "typescript": "^5.7.3"
   }

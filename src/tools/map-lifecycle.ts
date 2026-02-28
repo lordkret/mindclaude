@@ -6,6 +6,7 @@ import { readXMind } from "../xmind/reader.js";
 import { writeXMind } from "../xmind/writer.js";
 import { listMapFiles, mapFilePath, mapExists } from "../storage.js";
 import { renderMap } from "../render/ascii.js";
+import { gitPull } from "../web/git-ops.js";
 
 // Shared state: open documents
 const openDocs = new Map<string, { doc: MindMapDocument; idMapper?: IdMapper }>();
@@ -110,6 +111,32 @@ export function registerLifecycleTools(server: McpServer): void {
       }
       openDocs.delete(name);
       return { content: [{ type: "text", text: `Closed map "${name}".` }] };
+    }
+  );
+
+  server.tool(
+    "sync_maps",
+    "Pull latest changes from git remote and reload all open maps",
+    {},
+    async () => {
+      const pullResult = await gitPull();
+      const reloaded: string[] = [];
+      for (const [name, entry] of openDocs) {
+        if (!mapExists(name)) continue;
+        const path = mapFilePath(name);
+        try {
+          const { doc, idMapper } = readXMind(path);
+          entry.doc = doc;
+          entry.idMapper = idMapper;
+          reloaded.push(name);
+        } catch (e) {
+          reloaded.push(`${name} (reload failed: ${(e as Error).message})`);
+        }
+      }
+      const reloadMsg = reloaded.length > 0
+        ? `\nReloaded maps: ${reloaded.join(", ")}`
+        : "\nNo open maps to reload.";
+      return { content: [{ type: "text", text: `Git pull: ${pullResult}${reloadMsg}` }] };
     }
   );
 }

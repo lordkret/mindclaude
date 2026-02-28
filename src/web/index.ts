@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { timingSafeEqual } from "node:crypto";
 import { router } from "./routes.js";
 import { ensureStorageDir } from "../storage.js";
 import { initGitRepo } from "./git-ops.js";
@@ -11,12 +12,48 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORT = parseInt(process.env.MINDCLAUDE_PORT || "3917", 10);
+const AUTH_USER = process.env.MINDCLAUDE_USER || "";
+const AUTH_PASS = process.env.MINDCLAUDE_PASS || "";
+
+function basicAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!AUTH_USER || !AUTH_PASS) { next(); return; }
+
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith("Basic ")) {
+    res.set("WWW-Authenticate", 'Basic realm="MindClaude"');
+    res.status(401).send("Authentication required");
+    return;
+  }
+
+  const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+  const sep = decoded.indexOf(":");
+  if (sep === -1) { res.status(401).send("Invalid credentials"); return; }
+
+  const user = decoded.slice(0, sep);
+  const pass = decoded.slice(sep + 1);
+
+  const userBuf = Buffer.from(user);
+  const passBuf = Buffer.from(pass);
+  const expectedUser = Buffer.from(AUTH_USER);
+  const expectedPass = Buffer.from(AUTH_PASS);
+
+  const userOk = userBuf.length === expectedUser.length && timingSafeEqual(userBuf, expectedUser);
+  const passOk = passBuf.length === expectedPass.length && timingSafeEqual(passBuf, expectedPass);
+
+  if (userOk && passOk) { next(); return; }
+
+  res.set("WWW-Authenticate", 'Basic realm="MindClaude"');
+  res.status(401).send("Invalid credentials");
+}
 
 async function main() {
   ensureStorageDir();
   await initGitRepo();
 
   const app = express();
+
+  // Basic auth (enabled when env vars are set)
+  app.use(basicAuth);
 
   // Static files from public/
   const publicDir = join(__dirname, "..", "..", "public");

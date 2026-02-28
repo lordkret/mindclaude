@@ -19,6 +19,10 @@ const btnZoomIn = document.getElementById("btn-zoom-in");
 const btnZoomOut = document.getElementById("btn-zoom-out");
 const btnZoomFit = document.getElementById("btn-zoom-fit");
 const zoomLevel = document.getElementById("zoom-level");
+const btnCollapseAll = document.getElementById("btn-collapse-all");
+const btnExpandAll = document.getElementById("btn-expand-all");
+const btnCollapseSel = document.getElementById("btn-collapse-sel");
+const btnExpandSel = document.getElementById("btn-expand-sel");
 
 function setStatus(msg, isError) {
   status.textContent = msg;
@@ -28,23 +32,126 @@ function setStatus(msg, isError) {
 
 // --- Zoom ---
 
-function applyZoom(scale) {
-  zoomScale = Math.max(0.3, Math.min(3, scale));
-  const container = document.getElementById("jsmind-container");
-  const inner = container.querySelector("jmnodes");
-  const canvas = container.querySelector("canvas");
-  if (inner) inner.style.transform = `scale(${zoomScale})`;
-  if (inner) inner.style.transformOrigin = "center center";
-  if (canvas) {
-    canvas.style.transform = `scale(${zoomScale})`;
-    canvas.style.transformOrigin = "center center";
-  }
+let zoomOffsetX = 0;
+let zoomOffsetY = 0;
+
+function applyZoom(scale, ox, oy) {
+  zoomScale = Math.max(0.2, Math.min(3, scale));
+  if (ox !== undefined) zoomOffsetX = ox;
+  if (oy !== undefined) zoomOffsetY = oy;
+  const ctr = document.getElementById("jsmind-container");
+  const inner = ctr.querySelector("jmnodes");
+  const canvas = ctr.querySelector("canvas");
+  const tf = `translate(${zoomOffsetX}px, ${zoomOffsetY}px) scale(${zoomScale})`;
+  const origin = "center center";
+  if (inner) { inner.style.transform = tf; inner.style.transformOrigin = origin; }
+  if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
   zoomLevel.textContent = Math.round(zoomScale * 100) + "%";
 }
 
 function zoomIn() { applyZoom(zoomScale + 0.15); }
 function zoomOut() { applyZoom(zoomScale - 0.15); }
-function zoomFit() { applyZoom(1); }
+
+function zoomFit() {
+  const ctr = document.getElementById("jsmind-container");
+  const inner = ctr.querySelector("jmnodes");
+  if (!inner) { applyZoom(1, 0, 0); return; }
+  // Reset transform to measure true layout
+  inner.style.transform = "none";
+  const canvas = ctr.querySelector("canvas");
+  if (canvas) canvas.style.transform = "none";
+
+  // Force reflow so measurements are accurate
+  void inner.offsetHeight;
+
+  const nodes = inner.querySelectorAll("jmnode");
+  if (nodes.length === 0) { applyZoom(1, 0, 0); return; }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const ctrRect = ctr.getBoundingClientRect();
+  for (const n of nodes) {
+    if (n.offsetParent === null) continue;
+    const r = n.getBoundingClientRect();
+    minX = Math.min(minX, r.left - ctrRect.left);
+    minY = Math.min(minY, r.top - ctrRect.top);
+    maxX = Math.max(maxX, r.right - ctrRect.left);
+    maxY = Math.max(maxY, r.bottom - ctrRect.top);
+  }
+  const contentW = maxX - minX;
+  const contentH = maxY - minY;
+  if (contentW <= 0 || contentH <= 0) { applyZoom(1, 0, 0); return; }
+
+  const pad = 30;
+  const scaleX = (ctrRect.width - pad * 2) / contentW;
+  const scaleY = (ctrRect.height - pad * 2) / contentH;
+  const fitScale = Math.min(scaleX, scaleY, 1.5);
+  const scale = Math.max(0.2, fitScale);
+
+  // Content center in unscaled coords (relative to container center)
+  const contentCenterX = (minX + maxX) / 2;
+  const contentCenterY = (minY + maxY) / 2;
+  const viewCenterX = ctrRect.width / 2;
+  const viewCenterY = ctrRect.height / 2;
+
+  // Offset to move content center to viewport center
+  const ox = (viewCenterX - contentCenterX);
+  const oy = (viewCenterY - contentCenterY);
+
+  applyZoom(scale, ox, oy);
+}
+
+// --- Collapse / Expand ---
+
+function forEachNode(node, depth, fn) {
+  fn(node, depth);
+  if (node.children) {
+    for (const child of node.children) {
+      forEachNode(child, depth + 1, fn);
+    }
+  }
+}
+
+function collapseAll() {
+  if (!jm || !jm.mind || !jm.mind.root) return;
+  // Collapse all nodes at depth >= 1 (keep root + first level visible)
+  forEachNode(jm.mind.root, 0, (node, depth) => {
+    if (depth >= 1 && node.children && node.children.length > 0) {
+      jm.collapse_node(node);
+    }
+  });
+}
+
+function expandAll() {
+  if (!jm || !jm.mind || !jm.mind.root) return;
+  forEachNode(jm.mind.root, 0, (node) => {
+    if (node.children && node.children.length > 0) {
+      jm.expand_node(node);
+    }
+  });
+}
+
+function collapseSel() {
+  if (!jm) return;
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a node first", true); return; }
+  // Collapse selected and all its descendants
+  forEachNode(selected, 0, (node) => {
+    if (node.children && node.children.length > 0) {
+      jm.collapse_node(node);
+    }
+  });
+}
+
+function expandSel() {
+  if (!jm) return;
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a node first", true); return; }
+  forEachNode(selected, 0, (node) => {
+    if (node.children && node.children.length > 0) {
+      jm.expand_node(node);
+    }
+  });
+}
 
 // --- Map list ---
 
@@ -102,7 +209,9 @@ async function loadMap(name) {
     const data = await res.json();
     currentMap = name;
     zoomScale = 1;
-    applyZoom(1);
+    zoomOffsetX = 0;
+    zoomOffsetY = 0;
+    applyZoom(1, 0, 0);
     jm.show(data);
     btnSave.disabled = false;
     btnDelete.disabled = false;
@@ -299,6 +408,10 @@ btnCloseSidebar.addEventListener("click", toggleSidebar);
 btnZoomIn.addEventListener("click", zoomIn);
 btnZoomOut.addEventListener("click", zoomOut);
 btnZoomFit.addEventListener("click", zoomFit);
+btnCollapseAll.addEventListener("click", collapseAll);
+btnExpandAll.addEventListener("click", expandAll);
+btnCollapseSel.addEventListener("click", collapseSel);
+btnExpandSel.addEventListener("click", expandSel);
 btnAddRel.addEventListener("click", addRelationship);
 
 // Ctrl+S to save

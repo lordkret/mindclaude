@@ -30,6 +30,9 @@ const btnUndo = document.getElementById("btn-undo");
 const btnReload = document.getElementById("btn-reload");
 const btnAddNode = document.getElementById("btn-add-node");
 const btnDelNode = document.getElementById("btn-del-node");
+const btnCopy = document.getElementById("btn-copy");
+const btnCut = document.getElementById("btn-cut");
+const btnPaste = document.getElementById("btn-paste");
 
 function setStatus(msg, isError) {
   status.textContent = msg;
@@ -252,6 +255,7 @@ function copyNode() {
   const selected = jm.get_selected_node();
   if (!selected) { setStatus("Select a node first", true); return; }
   clipboard = copySubtree(selected);
+  btnPaste.disabled = !jm.get_selected_node();
   setStatus("Copied");
 }
 
@@ -263,6 +267,7 @@ function cutNode() {
   clipboard = copySubtree(selected);
   pushUndo();
   jm.remove_node(selected);
+  btnPaste.disabled = false;
   setStatus("Cut");
 }
 
@@ -306,6 +311,9 @@ function setupSelectionTracking() {
       const hasSelection = !!sel;
       btnAddNode.disabled = !hasSelection;
       btnDelNode.disabled = !hasSelection || (sel && sel.isroot);
+      btnCopy.disabled = !hasSelection;
+      btnCut.disabled = !hasSelection || (sel && sel.isroot);
+      btnPaste.disabled = !hasSelection || !clipboard;
     }
   });
 }
@@ -578,6 +586,9 @@ btnUndo.addEventListener("click", undo);
 btnReload.addEventListener("click", reloadMap);
 btnAddNode.addEventListener("click", addNode);
 btnDelNode.addEventListener("click", delNode);
+btnCopy.addEventListener("click", copyNode);
+btnCut.addEventListener("click", cutNode);
+btnPaste.addEventListener("click", pasteNode);
 btnAddRel.addEventListener("click", addRelationship);
 
 // Keyboard shortcuts

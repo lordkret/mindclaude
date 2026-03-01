@@ -1,6 +1,5 @@
-import { MindMapDocument, MindMapNode, MindMapSheet, IdMapper } from "../model/types.js";
+import { MindMapDocument, MindMapNode, IdMapper } from "../model/types.js";
 import { buildIndices, activeSheet } from "../model/mindmap.js";
-import { generateShortId } from "../model/id.js";
 
 export interface JsMindNode {
   id: string;
@@ -18,10 +17,14 @@ export interface JsMindData {
   data: JsMindNode[];
 }
 
-export function docToJsMind(doc: MindMapDocument): JsMindData {
+/**
+ * Convert doc to jsMind format using stable XMind long IDs.
+ * This ensures IDs are consistent across stateless reads.
+ */
+export function docToJsMind(doc: MindMapDocument, idMapper: IdMapper): JsMindData {
   const sheet = activeSheet(doc);
   const nodes: JsMindNode[] = [];
-  walkNode(sheet.rootTopic, null, nodes);
+  walkNode(sheet.rootTopic, null, nodes, idMapper);
   return {
     meta: { name: doc.name, author: "mindclaude" },
     format: "node_array",
@@ -29,33 +32,54 @@ export function docToJsMind(doc: MindMapDocument): JsMindData {
   };
 }
 
-function walkNode(node: MindMapNode, parentId: string | null, out: JsMindNode[]): void {
+function toLongId(shortId: string, idMapper: IdMapper): string {
+  return idMapper.shortToLong.get(shortId) || shortId;
+}
+
+function toShortId(longId: string, idMapper: IdMapper): string {
+  return idMapper.longToShort.get(longId) || longId;
+}
+
+function walkNode(node: MindMapNode, parentShortId: string | null, out: JsMindNode[], idMapper: IdMapper): void {
+  const longId = toLongId(node.id, idMapper);
   const jNode: JsMindNode = {
-    id: node.id,
+    id: longId,
     topic: node.title,
   };
-  if (parentId === null) {
+  if (parentShortId === null) {
     jNode.isroot = true;
   } else {
-    jNode.parentid = parentId;
+    jNode.parentid = toLongId(parentShortId, idMapper);
   }
   if (node.notes) jNode["data-notes"] = node.notes;
   if (node.labels && node.labels.length > 0) jNode["data-labels"] = JSON.stringify(node.labels);
   if (node.markers && node.markers.length > 0) jNode["data-markers"] = JSON.stringify(node.markers);
   out.push(jNode);
   for (const child of node.children) {
-    walkNode(child, node.id, out);
+    walkNode(child, node.id, out, idMapper);
   }
 }
 
+/**
+ * Apply jsMind data (with long IDs) back to an existing doc.
+ * Converts long IDs to short IDs using the idMapper before reconciliation.
+ */
 export function jsMindToDoc(
   jsMindData: JsMindData,
   existingDoc: MindMapDocument,
-  existingIdMapper?: IdMapper
-): { doc: MindMapDocument; idMapper?: IdMapper } {
+  idMapper: IdMapper
+): { doc: MindMapDocument; idMapper: IdMapper } {
   const sheet = activeSheet(existingDoc);
+
+  // Convert incoming long IDs to short IDs
+  const translated: JsMindNode[] = jsMindData.data.map((jNode) => ({
+    ...jNode,
+    id: toShortId(jNode.id, idMapper),
+    parentid: jNode.parentid ? toShortId(jNode.parentid, idMapper) : undefined,
+  }));
+
   const incomingById = new Map<string, JsMindNode>();
-  for (const jNode of jsMindData.data) {
+  for (const jNode of translated) {
     incomingById.set(jNode.id, jNode);
   }
 
@@ -99,11 +123,11 @@ export function jsMindToDoc(
     (r) => existingDoc.nodeIndex.has(r.end1Id) && existingDoc.nodeIndex.has(r.end2Id)
   );
 
-  // Add new nodes
-  for (const jNode of jsMindData.data) {
+  // Add new nodes (these have long IDs not in idMapper — generate new short IDs for them)
+  for (const jNode of translated) {
     if (!existingIds.has(jNode.id)) {
       const parentId = jNode.parentid;
-      if (!parentId) continue; // new root not supported
+      if (!parentId) continue;
       const parent = existingDoc.nodeIndex.get(parentId);
       if (!parent) continue;
       const newNode: MindMapNode = {
@@ -120,19 +144,16 @@ export function jsMindToDoc(
   }
 
   // Update existing nodes: title, reparent, extras
-  for (const jNode of jsMindData.data) {
+  for (const jNode of translated) {
     const node = existingDoc.nodeIndex.get(jNode.id);
     if (!node) continue;
 
-    // Update title
     if (node.title !== jNode.topic) {
       node.title = jNode.topic;
     }
 
-    // Update extras
     applyJsMindExtras(node, jNode);
 
-    // Check reparent
     if (jNode.parentid) {
       const currentParentId = existingDoc.parentIndex.get(jNode.id);
       if (currentParentId && currentParentId !== jNode.parentid) {
@@ -151,9 +172,8 @@ export function jsMindToDoc(
   }
 
   existingDoc.dirty = true;
-  // Rebuild indices to ensure consistency
   buildIndices(existingDoc);
-  return { doc: existingDoc, idMapper: existingIdMapper };
+  return { doc: existingDoc, idMapper };
 }
 
 function applyJsMindExtras(node: MindMapNode, jNode: JsMindNode): void {

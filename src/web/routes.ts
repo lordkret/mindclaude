@@ -3,6 +3,7 @@ import { listMapFiles, mapFilePath, mapExists } from "../storage.js";
 import { readXMind } from "../xmind/reader.js";
 import { writeXMind } from "../xmind/writer.js";
 import { createDocument, activeSheet, buildIndices } from "../model/mindmap.js";
+import { IdMapper } from "../model/types.js";
 import { docToJsMind, jsMindToDoc, JsMindData } from "./converter.js";
 import { gitCommitAndPush } from "./git-ops.js";
 import { unlinkSync } from "node:fs";
@@ -24,8 +25,8 @@ router.get("/maps/:name", (req, res) => {
     return;
   }
   const path = mapFilePath(name);
-  const { doc } = readXMind(path);
-  const jsMindData = docToJsMind(doc);
+  const { doc, idMapper } = readXMind(path);
+  const jsMindData = docToJsMind(doc, idMapper);
   res.json(jsMindData);
 });
 
@@ -43,7 +44,9 @@ router.post("/maps", (req, res) => {
   const doc = createDocument(name);
   const path = mapFilePath(name);
   writeXMind(doc, path);
-  const jsMindData = docToJsMind(doc);
+  // Read back to get stable idMapper with long IDs
+  const { doc: savedDoc, idMapper: newIdMapper } = readXMind(path);
+  const jsMindData = docToJsMind(savedDoc, newIdMapper);
   res.status(201).json(jsMindData);
 });
 
@@ -78,7 +81,8 @@ router.put("/maps/:name", async (req, res) => {
   } else {
     // New map from jsMind data
     doc = createDocument(name);
-    const result = jsMindToDoc(jsMindData, doc);
+    const emptyMapper = { shortToLong: new Map<string, string>(), longToShort: new Map<string, string>() };
+    const result = jsMindToDoc(jsMindData, doc, emptyMapper);
     doc = result.doc;
     idMapper = result.idMapper;
   }

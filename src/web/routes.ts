@@ -63,6 +63,15 @@ router.put("/maps/:name", async (req, res) => {
 
   if (mapExists(name)) {
     const existing = readXMind(path);
+    const existingNodeCount = existing.doc.nodeIndex.size;
+    const incomingNodeCount = jsMindData.data.length;
+    // Safety: refuse to save if incoming data would delete >80% of nodes
+    if (existingNodeCount > 5 && incomingNodeCount < existingNodeCount * 0.2 && req.query.force !== "true") {
+      res.status(400).json({
+        error: `Safety: save rejected. Incoming data has ${incomingNodeCount} nodes vs ${existingNodeCount} on disk. Reload and try again.`
+      });
+      return;
+    }
     const result = jsMindToDoc(jsMindData, existing.doc, existing.idMapper);
     doc = result.doc;
     idMapper = result.idMapper;

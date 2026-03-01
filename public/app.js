@@ -6,6 +6,7 @@ let currentMap = null;
 let zoomScale = 1;
 const undoStack = [];
 const MAX_UNDO = 50;
+let clipboard = null; // { node, children[] } for copy/cut
 
 const selector = document.getElementById("map-selector");
 const btnSave = document.getElementById("btn-save");
@@ -27,6 +28,8 @@ const btnCollapseSel = document.getElementById("btn-collapse-sel");
 const btnExpandSel = document.getElementById("btn-expand-sel");
 const btnUndo = document.getElementById("btn-undo");
 const btnReload = document.getElementById("btn-reload");
+const btnAddNode = document.getElementById("btn-add-node");
+const btnDelNode = document.getElementById("btn-del-node");
 
 function setStatus(msg, isError) {
   status.textContent = msg;
@@ -208,6 +211,103 @@ async function reloadMap() {
   pushUndo(); // save current state before reload so user can undo
   await loadMap(currentMap);
   setStatus(`Reloaded "${currentMap}"`);
+}
+
+// --- Add / Delete node ---
+
+function addNode() {
+  if (!jm) return;
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a node first", true); return; }
+  const topic = prompt("Node text:");
+  if (!topic) return;
+  pushUndo();
+  const id = crypto.randomUUID().slice(0, 8);
+  jm.add_node(selected, id, topic);
+}
+
+function delNode() {
+  if (!jm) return;
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a node first", true); return; }
+  if (selected.isroot) { setStatus("Cannot delete root node", true); return; }
+  pushUndo();
+  jm.remove_node(selected);
+}
+
+// --- Copy / Cut / Paste ---
+
+function copySubtree(node) {
+  const item = { id: node.id, topic: node.topic, children: [] };
+  if (node.children) {
+    for (const child of node.children) {
+      item.children.push(copySubtree(child));
+    }
+  }
+  return item;
+}
+
+function copyNode() {
+  if (!jm) return;
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a node first", true); return; }
+  clipboard = copySubtree(selected);
+  setStatus("Copied");
+}
+
+function cutNode() {
+  if (!jm) return;
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a node first", true); return; }
+  if (selected.isroot) { setStatus("Cannot cut root node", true); return; }
+  clipboard = copySubtree(selected);
+  pushUndo();
+  jm.remove_node(selected);
+  setStatus("Cut");
+}
+
+function pasteSubtree(parent, item) {
+  const newId = crypto.randomUUID().slice(0, 8);
+  const node = jm.add_node(parent, newId, item.topic);
+  for (const child of item.children) {
+    pasteSubtree(node, child);
+  }
+}
+
+function pasteNode() {
+  if (!jm || !clipboard) { setStatus("Nothing to paste", true); return; }
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a target node first", true); return; }
+  pushUndo();
+  pasteSubtree(selected, clipboard);
+  setStatus("Pasted");
+}
+
+// --- Double-click to toggle collapse/expand ---
+
+function setupDblClickToggle() {
+  const ctr = document.getElementById("jsmind-container");
+  ctr.addEventListener("dblclick", (e) => {
+    if (!jm) return;
+    const selected = jm.get_selected_node();
+    if (!selected || !selected.children || selected.children.length === 0) return;
+    jm.toggle_node(selected);
+  });
+}
+
+// --- Selection tracking ---
+
+function setupSelectionTracking() {
+  if (!jm) return;
+  jm.add_event_listener((type) => {
+    // type 4 = select
+    if (type === 4) {
+      const sel = jm.get_selected_node();
+      const hasSelection = !!sel;
+      btnAddNode.disabled = !hasSelection;
+      btnDelNode.disabled = !hasSelection || (sel && sel.isroot);
+    }
+  });
 }
 
 // --- Map list ---
@@ -476,6 +576,8 @@ btnCollapseSel.addEventListener("click", collapseSel);
 btnExpandSel.addEventListener("click", expandSel);
 btnUndo.addEventListener("click", undo);
 btnReload.addEventListener("click", reloadMap);
+btnAddNode.addEventListener("click", addNode);
+btnDelNode.addEventListener("click", delNode);
 btnAddRel.addEventListener("click", addRelationship);
 
 // Keyboard shortcuts
@@ -488,10 +590,34 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     undo();
   }
+  if (e.key === "Delete" || e.key === "Backspace") {
+    // Only delete if not editing a text input
+    if (e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA" && !e.target.isContentEditable) {
+      delNode();
+    }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "c" && e.target.tagName !== "INPUT") {
+    e.preventDefault();
+    copyNode();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "x" && e.target.tagName !== "INPUT") {
+    e.preventDefault();
+    cutNode();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "v" && e.target.tagName !== "INPUT") {
+    e.preventDefault();
+    pasteNode();
+  }
+  if (e.key === "Tab" && currentMap) {
+    e.preventDefault();
+    addNode();
+  }
 });
 
 // --- Init ---
 
 initJsMind();
 startUndoCapture();
+setupDblClickToggle();
+setupSelectionTracking();
 loadMapList();

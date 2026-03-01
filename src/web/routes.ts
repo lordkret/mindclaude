@@ -5,8 +5,8 @@ import { writeXMind } from "../xmind/writer.js";
 import { createDocument, activeSheet, buildIndices } from "../model/mindmap.js";
 import { IdMapper } from "../model/types.js";
 import { docToJsMind, jsMindToDoc, JsMindData } from "./converter.js";
-import { gitCommitAndPush } from "./git-ops.js";
-import { unlinkSync } from "node:fs";
+import { gitCommitAndPush, gitLog, gitShowFile } from "./git-ops.js";
+import { unlinkSync, writeFileSync } from "node:fs";
 
 const router = Router();
 router.use(json());
@@ -53,7 +53,9 @@ router.post("/maps", (req, res) => {
 // PUT /api/maps/:name — save jsMind JSON
 router.put("/maps/:name", async (req, res) => {
   const { name } = req.params;
-  const jsMindData: JsMindData = req.body;
+  const { comment, ...rest } = req.body;
+  // Support both { data, meta, ... } directly and { comment, data, meta, ... }
+  const jsMindData: JsMindData = rest.data ? rest : req.body;
 
   if (!jsMindData || !jsMindData.data || !Array.isArray(jsMindData.data)) {
     res.status(400).json({ error: "Invalid jsMind data" });
@@ -91,7 +93,7 @@ router.put("/maps/:name", async (req, res) => {
 
   let gitResult = "";
   try {
-    gitResult = await gitCommitAndPush(path, name);
+    gitResult = await gitCommitAndPush(path, name, comment || undefined);
   } catch (e) {
     gitResult = `Git error: ${(e as Error).message}`;
   }
@@ -109,6 +111,47 @@ router.delete("/maps/:name", (req, res) => {
   const path = mapFilePath(name);
   unlinkSync(path);
   res.json({ ok: true });
+});
+
+// GET /api/maps/:name/versions — git log for a map file
+router.get("/maps/:name/versions", async (req, res) => {
+  const { name } = req.params;
+  if (!mapExists(name)) {
+    res.status(404).json({ error: `Map "${name}" not found` });
+    return;
+  }
+  const limit = parseInt(req.query.limit as string) || 5;
+  const offset = parseInt(req.query.offset as string) || 0;
+  const path = mapFilePath(name);
+  try {
+    const entries = await gitLog(path, limit, offset);
+    res.json(entries);
+  } catch (e) {
+    res.status(500).json({ error: `Git log failed: ${(e as Error).message}` });
+  }
+});
+
+// POST /api/maps/:name/versions/:sha/restore — restore a previous version
+router.post("/maps/:name/versions/:sha/restore", async (req, res) => {
+  const { name, sha } = req.params;
+  if (!mapExists(name)) {
+    res.status(404).json({ error: `Map "${name}" not found` });
+    return;
+  }
+  const path = mapFilePath(name);
+  try {
+    const fileBuffer = await gitShowFile(path, sha);
+    writeFileSync(path, fileBuffer);
+    const shortSha = sha.slice(0, 7);
+    const commitMsg = `Restore ${name} to ${shortSha}`;
+    const gitResult = await gitCommitAndPush(path, name, commitMsg);
+    // Read back the restored map to return to client
+    const { doc, idMapper } = readXMind(path);
+    const jsMindData = docToJsMind(doc, idMapper);
+    res.json({ ok: true, git: gitResult, data: jsMindData });
+  } catch (e) {
+    res.status(500).json({ error: `Restore failed: ${(e as Error).message}` });
+  }
 });
 
 // GET /api/maps/:name/relationships

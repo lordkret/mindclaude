@@ -10,6 +10,7 @@ let clipboard = null; // { node, children[] } for copy/cut
 
 const selector = document.getElementById("map-selector");
 const btnSave = document.getElementById("btn-save");
+const btnVersions = document.getElementById("btn-versions");
 const btnNew = document.getElementById("btn-new");
 const btnDelete = document.getElementById("btn-delete");
 const btnSidebar = document.getElementById("btn-sidebar");
@@ -29,7 +30,10 @@ const btnExpandSel = document.getElementById("btn-expand-sel");
 const btnUndo = document.getElementById("btn-undo");
 const btnReload = document.getElementById("btn-reload");
 const btnAddNode = document.getElementById("btn-add-node");
+const btnAddSibling = document.getElementById("btn-add-sibling");
 const btnDelNode = document.getElementById("btn-del-node");
+const btnFind = document.getElementById("btn-find");
+const btnTheme = document.getElementById("btn-theme");
 const btnCopy = document.getElementById("btn-copy");
 const btnCut = document.getElementById("btn-cut");
 const btnPaste = document.getElementById("btn-paste");
@@ -179,6 +183,7 @@ function undo() {
   if (!jm || !currentMap || undoStack.length === 0) return;
   const snapshot = JSON.parse(undoStack.pop());
   jm.show(snapshot);
+  applyDescIndicators();
   btnUndo.disabled = undoStack.length === 0;
   setStatus("Undone");
 }
@@ -216,17 +221,89 @@ async function reloadMap() {
   setStatus(`Reloaded "${currentMap}"`);
 }
 
+// --- Node description helpers ---
+
+// Build display topic: title + dot indicator if node has description
+function buildDisplayTopic(title, hasDesc) {
+  const escaped = escapeHtmlInline(title);
+  if (hasDesc) {
+    return escaped + '<span class="node-desc-indicator"></span>';
+  }
+  return escaped;
+}
+
+function escapeHtmlInline(str) {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Get plain title from a node (strip HTML indicator)
+function getPlainTitle(node) {
+  if (!node || !node.topic) return "";
+  return node.topic.replace(/<span class="node-desc-indicator"><\/span>/, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+}
+
+// Get description stored in node data
+function getNodeDesc(node) {
+  if (!node || !node.data) return "";
+  return node.data["notes"] || "";
+}
+
+// Set description on a node
+function setNodeDesc(node, desc) {
+  if (!node) return;
+  if (!node.data) node.data = {};
+  if (desc) {
+    node.data["notes"] = desc;
+  } else {
+    delete node.data["notes"];
+  }
+}
+
+// Apply description indicator dots to all nodes after load
+function applyDescIndicators() {
+  if (!jm || !jm.mind || !jm.mind.root) return;
+  forEachNode(jm.mind.root, 0, (node) => {
+    const hasDesc = !!(node.data && node.data["notes"]);
+    const plain = getPlainTitle(node);
+    const display = buildDisplayTopic(plain, hasDesc);
+    if (node.topic !== display) {
+      jm.update_node(node.id, display);
+    }
+  });
+}
+
 // --- Add / Delete node ---
 
 function addNode() {
   if (!jm) return;
   const selected = jm.get_selected_node();
   if (!selected) { setStatus("Select a node first", true); return; }
-  const topic = prompt("Node text:");
-  if (!topic) return;
   pushUndo();
   const id = crypto.randomUUID().slice(0, 8);
-  jm.add_node(selected, id, topic);
+  const newNode = jm.add_node(selected, id, "New node");
+  if (newNode) {
+    jm.select_node(newNode);
+    // Focus the title input in the editor
+    setTimeout(() => {
+      nodeTitleInput.select();
+    }, 50);
+  }
+}
+
+function addSibling() {
+  if (!jm) return;
+  const selected = jm.get_selected_node();
+  if (!selected) { setStatus("Select a node first", true); return; }
+  if (selected.isroot) { setStatus("Cannot add sibling to root", true); return; }
+  pushUndo();
+  const id = crypto.randomUUID().slice(0, 8);
+  const newNode = jm.add_node(selected.parent, id, "New node");
+  if (newNode) {
+    jm.select_node(newNode);
+    setTimeout(() => {
+      nodeTitleInput.select();
+    }, 50);
+  }
 }
 
 function delNode() {
@@ -236,12 +313,13 @@ function delNode() {
   if (selected.isroot) { setStatus("Cannot delete root node", true); return; }
   pushUndo();
   jm.remove_node(selected);
+  closeNodeEditor();
 }
 
 // --- Copy / Cut / Paste ---
 
 function copySubtree(node) {
-  const item = { id: node.id, topic: node.topic, children: [] };
+  const item = { id: node.id, topic: node.topic, desc: getNodeDesc(node), children: [] };
   if (node.children) {
     for (const child of node.children) {
       item.children.push(copySubtree(child));
@@ -273,7 +351,12 @@ function cutNode() {
 
 function pasteSubtree(parent, item) {
   const newId = crypto.randomUUID().slice(0, 8);
-  const node = jm.add_node(parent, newId, item.topic);
+  const plainTitle = getPlainTitle({ topic: item.topic });
+  const display = buildDisplayTopic(plainTitle, !!item.desc);
+  const node = jm.add_node(parent, newId, display);
+  if (node && item.desc) {
+    setNodeDesc(node, item.desc);
+  }
   for (const child of item.children) {
     pasteSubtree(node, child);
   }
@@ -300,6 +383,77 @@ function setupDblClickToggle() {
   });
 }
 
+// --- Node Editor Panel ---
+
+const nodeEditor = document.getElementById("node-editor");
+const nodeTitleInput = document.getElementById("node-title-input");
+const nodeDescInput = document.getElementById("node-desc-input");
+const nodeEditorClose = document.getElementById("node-editor-close");
+const nodeEditorExpand = document.getElementById("node-editor-expand");
+let editingNodeId = null;
+
+function openNodeEditor(node) {
+  if (!node) return;
+  editingNodeId = node.id;
+  nodeTitleInput.value = getPlainTitle(node);
+  nodeDescInput.value = getNodeDesc(node);
+  nodeEditor.style.display = "flex";
+  nodeEditor.classList.remove("expanded");
+  nodeEditorExpand.innerHTML = "&#x2922;"; // expand icon
+}
+
+function closeNodeEditor() {
+  nodeEditor.style.display = "none";
+  nodeEditor.classList.remove("expanded");
+  editingNodeId = null;
+}
+
+function toggleEditorExpand() {
+  nodeEditor.classList.toggle("expanded");
+  if (nodeEditor.classList.contains("expanded")) {
+    nodeEditorExpand.innerHTML = "&#x2923;"; // collapse icon
+  } else {
+    nodeEditorExpand.innerHTML = "&#x2922;"; // expand icon
+  }
+}
+
+function applyNodeEditorChanges() {
+  if (!jm || !editingNodeId) return;
+  const node = jm.get_node(editingNodeId);
+  if (!node) return;
+
+  const newTitle = nodeTitleInput.value.trim() || "Untitled";
+  const newDesc = nodeDescInput.value.trim();
+  const oldTitle = getPlainTitle(node);
+  const oldDesc = getNodeDesc(node);
+
+  if (newTitle !== oldTitle || newDesc !== oldDesc) {
+    pushUndo();
+    setNodeDesc(node, newDesc);
+    const display = buildDisplayTopic(newTitle, !!newDesc);
+    jm.update_node(node.id, display);
+  }
+}
+
+nodeTitleInput.addEventListener("input", applyNodeEditorChanges);
+nodeDescInput.addEventListener("input", applyNodeEditorChanges);
+nodeEditorClose.addEventListener("click", () => {
+  closeNodeEditor();
+  if (jm) jm.select_clear();
+});
+nodeEditorExpand.addEventListener("click", toggleEditorExpand);
+
+// Prevent keyboard shortcuts while editing in the panel
+nodeTitleInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { nodeTitleInput.blur(); return; }
+  if (e.key === "Tab") { e.preventDefault(); nodeDescInput.focus(); return; }
+  e.stopPropagation();
+});
+nodeDescInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { nodeDescInput.blur(); return; }
+  e.stopPropagation();
+});
+
 // --- Selection tracking ---
 
 function setupSelectionTracking() {
@@ -310,10 +464,17 @@ function setupSelectionTracking() {
       const sel = jm.get_selected_node();
       const hasSelection = !!sel;
       btnAddNode.disabled = !hasSelection;
+      btnAddSibling.disabled = !hasSelection || (sel && sel.isroot);
       btnDelNode.disabled = !hasSelection || (sel && sel.isroot);
       btnCopy.disabled = !hasSelection;
       btnCut.disabled = !hasSelection || (sel && sel.isroot);
       btnPaste.disabled = !hasSelection || !clipboard;
+
+      if (sel) {
+        openNodeEditor(sel);
+      } else {
+        closeNodeEditor();
+      }
     }
   });
 }
@@ -342,7 +503,7 @@ function initJsMind() {
     container: "jsmind-container",
     editable: true,
     theme: "primary",
-    support_html: false,
+    support_html: true,
     view: {
       engine: "canvas",
       hmargin: 100,
@@ -362,10 +523,13 @@ async function loadMap(name) {
   if (!name) {
     currentMap = null;
     btnSave.disabled = true;
+    btnVersions.disabled = true;
+    btnFind.disabled = true;
     btnDelete.disabled = true;
     btnUndo.disabled = true;
     btnReload.disabled = true;
     undoStack.length = 0;
+    closeNodeEditor();
     if (jm) jm.show({ meta: { name: "", author: "" }, format: "node_array", data: [] });
     relList.innerHTML = "";
     return;
@@ -381,7 +545,11 @@ async function loadMap(name) {
     zoomOffsetY = 0;
     applyZoom(1, 0, 0);
     jm.show(data);
+    closeNodeEditor();
+    applyDescIndicators();
     btnSave.disabled = false;
+    btnVersions.disabled = false;
+    btnFind.disabled = false;
     btnDelete.disabled = false;
     btnReload.disabled = false;
     btnUndo.disabled = undoStack.length === 0;
@@ -392,25 +560,254 @@ async function loadMap(name) {
   }
 }
 
-// --- Save map ---
+// --- Save Modal ---
 
-async function saveMap() {
+const saveModal = document.getElementById("save-modal");
+const saveComment = document.getElementById("save-comment");
+const saveModalConfirm = document.getElementById("save-modal-confirm");
+const saveModalCancel = document.getElementById("save-modal-cancel");
+const saveSpinner = document.getElementById("save-spinner");
+
+function openSaveModal() {
   if (!currentMap || !jm) return;
+  saveComment.value = "";
+  saveModal.style.display = "flex";
+  saveSpinner.style.display = "none";
+  saveModalConfirm.disabled = false;
+  saveModalCancel.disabled = false;
+  saveComment.focus();
+}
+
+function closeSaveModal() {
+  saveModal.style.display = "none";
+}
+
+async function doSave() {
+  if (!currentMap || !jm) return;
+  saveModalConfirm.disabled = true;
+  saveModalCancel.disabled = true;
+  saveSpinner.style.display = "block";
+
   const data = jm.get_data("node_array");
+  const comment = saveComment.value.trim();
+  const body = { ...data, comment: comment || undefined };
+
   try {
     const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(await res.text());
     const result = await res.json();
-    const gitMsg = result.git && !result.git.includes("error") ? " + committed" : "";
-    setStatus(`Saved "${currentMap}"${gitMsg}`);
+    closeSaveModal();
+    const git = result.git || "";
+    if (git.includes("Push skipped") || git.includes("Push failed")) {
+      setStatus(`Saved "${currentMap}" (committed, push skipped)`);
+    } else if (git.includes("No changes")) {
+      setStatus(`No changes to save`);
+    } else {
+      setStatus(`Saved "${currentMap}" + pushed`);
+    }
   } catch (e) {
+    closeSaveModal();
     setStatus(`Error saving: ${e.message}`, true);
   }
 }
+
+saveModalConfirm.addEventListener("click", doSave);
+saveModalCancel.addEventListener("click", closeSaveModal);
+saveComment.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); doSave(); }
+  if (e.key === "Escape") { e.preventDefault(); closeSaveModal(); }
+});
+saveModal.addEventListener("click", (e) => {
+  if (e.target === saveModal) closeSaveModal();
+});
+
+// --- Versions Modal ---
+
+const versionsModal = document.getElementById("versions-modal");
+const versionsList = document.getElementById("versions-list");
+const versionsSpinner = document.getElementById("versions-spinner");
+const versionsLoadMore = document.getElementById("versions-load-more");
+const versionsModalClose = document.getElementById("versions-modal-close");
+let versionsOffset = 0;
+const VERSIONS_LIMIT = 5;
+
+function openVersionsModal() {
+  if (!currentMap) return;
+  versionsModal.style.display = "flex";
+  versionsList.innerHTML = "";
+  versionsOffset = 0;
+  versionsLoadMore.style.display = "none";
+  loadVersions();
+}
+
+function closeVersionsModal() {
+  versionsModal.style.display = "none";
+}
+
+async function loadVersions() {
+  versionsSpinner.style.display = "block";
+  versionsLoadMore.style.display = "none";
+  try {
+    const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/versions?limit=${VERSIONS_LIMIT}&offset=${versionsOffset}`);
+    if (!res.ok) throw new Error(await res.text());
+    const entries = await res.json();
+    for (const entry of entries) {
+      const div = document.createElement("div");
+      div.className = "version-item";
+      const shortSha = entry.sha.slice(0, 7);
+      const dateStr = new Date(entry.date).toLocaleString();
+      const msgText = entry.message.length > 60 ? entry.message.slice(0, 57) + "..." : entry.message;
+      div.innerHTML = `
+        <div class="version-info">
+          <div><span class="version-sha">${shortSha}</span><span class="version-msg">${escapeHtml(msgText)}</span></div>
+          <div class="version-date">${dateStr}</div>
+        </div>
+        <button class="version-restore" data-sha="${entry.sha}" data-msg="${escapeHtml(entry.message)}">Restore</button>
+      `;
+      versionsList.appendChild(div);
+    }
+    versionsOffset += entries.length;
+    versionsLoadMore.style.display = entries.length >= VERSIONS_LIMIT ? "inline-block" : "none";
+  } catch (e) {
+    setStatus(`Error loading versions: ${e.message}`, true);
+  } finally {
+    versionsSpinner.style.display = "none";
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function restoreVersion(sha, msg) {
+  const shortSha = sha.slice(0, 7);
+  if (!confirm(`Restore to version ${shortSha}?\n\n"${msg}"\n\nThis will overwrite current state and create a new commit.`)) return;
+  closeVersionsModal();
+  setStatus("Restoring...");
+  try {
+    const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/versions/${sha}/restore`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    if (result.data) {
+      pushUndo();
+      jm.show(result.data);
+      applyDescIndicators();
+    }
+    setStatus(`Restored to ${shortSha}`);
+  } catch (e) {
+    setStatus(`Restore failed: ${e.message}`, true);
+  }
+}
+
+versionsList.addEventListener("click", (e) => {
+  const btn = e.target.closest(".version-restore");
+  if (!btn) return;
+  restoreVersion(btn.dataset.sha, btn.dataset.msg);
+});
+versionsLoadMore.addEventListener("click", loadVersions);
+versionsModalClose.addEventListener("click", closeVersionsModal);
+versionsModal.addEventListener("click", (e) => {
+  if (e.target === versionsModal) closeVersionsModal();
+});
+
+// --- Find Modal ---
+
+const findModal = document.getElementById("find-modal");
+const findInput = document.getElementById("find-input");
+const findResults = document.getElementById("find-results");
+const findModalClose = document.getElementById("find-modal-close");
+
+function openFindModal() {
+  if (!jm || !currentMap) return;
+  findModal.style.display = "flex";
+  findInput.value = "";
+  findResults.innerHTML = "";
+  findInput.focus();
+}
+
+function closeFindModal() {
+  findModal.style.display = "none";
+}
+
+function doFind() {
+  if (!jm || !jm.mind) return;
+  const query = findInput.value.trim().toLowerCase();
+  findResults.innerHTML = "";
+  if (!query) return;
+
+  const results = [];
+  forEachNode(jm.mind.root, 0, (node) => {
+    const title = getPlainTitle(node).toLowerCase();
+    const desc = getNodeDesc(node).toLowerCase();
+    if (title.includes(query) || desc.includes(query)) {
+      results.push(node);
+    }
+  });
+
+  if (results.length === 0) {
+    findResults.innerHTML = '<div style="text-align:center;padding:16px 0;color:var(--text-muted);font-size:13px;">No matches</div>';
+    return;
+  }
+
+  for (const node of results) {
+    const div = document.createElement("div");
+    div.className = "find-result-item";
+    const title = getPlainTitle(node);
+    const desc = getNodeDesc(node);
+    div.textContent = title + (desc ? " — " + desc.slice(0, 40) : "");
+    div.addEventListener("click", () => {
+      closeFindModal();
+      // Expand parents so the node is visible
+      let p = node.parent;
+      while (p) {
+        if (p._data && p._data.layout && !p._data.layout.visible) {
+          jm.expand_node(p);
+        }
+        p = p.parent;
+      }
+      jm.select_node(node);
+    });
+    findResults.appendChild(div);
+  }
+}
+
+findInput.addEventListener("input", doFind);
+findInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeFindModal(); }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const first = findResults.querySelector(".find-result-item");
+    if (first) first.click();
+  }
+});
+findModalClose.addEventListener("click", closeFindModal);
+findModal.addEventListener("click", (e) => {
+  if (e.target === findModal) closeFindModal();
+});
+
+// --- Theme Toggle ---
+
+let lightTheme = localStorage.getItem("mindclaude-theme") === "light";
+
+function applyTheme() {
+  document.body.classList.toggle("light", lightTheme);
+  btnTheme.textContent = lightTheme ? "Dark" : "Light";
+  localStorage.setItem("mindclaude-theme", lightTheme ? "light" : "dark");
+}
+
+function toggleTheme() {
+  lightTheme = !lightTheme;
+  applyTheme();
+}
+
+applyTheme();
+btnTheme.addEventListener("click", toggleTheme);
 
 // --- New map ---
 
@@ -448,6 +845,8 @@ async function deleteMap() {
     currentMap = null;
     selector.value = "";
     btnSave.disabled = true;
+    btnVersions.disabled = true;
+    btnFind.disabled = true;
     btnDelete.disabled = true;
     jm.show({ meta: { name: "", author: "" }, format: "node_array", data: [] });
     relList.innerHTML = "";
@@ -570,7 +969,8 @@ container.addEventListener("wheel", (e) => {
 // --- Events ---
 
 selector.addEventListener("change", () => loadMap(selector.value));
-btnSave.addEventListener("click", saveMap);
+btnSave.addEventListener("click", openSaveModal);
+btnVersions.addEventListener("click", openVersionsModal);
 btnNew.addEventListener("click", createMap);
 btnDelete.addEventListener("click", deleteMap);
 btnSidebar.addEventListener("click", toggleSidebar);
@@ -585,7 +985,9 @@ btnExpandSel.addEventListener("click", expandSel);
 btnUndo.addEventListener("click", undo);
 btnReload.addEventListener("click", reloadMap);
 btnAddNode.addEventListener("click", addNode);
+btnAddSibling.addEventListener("click", addSibling);
 btnDelNode.addEventListener("click", delNode);
+btnFind.addEventListener("click", openFindModal);
 btnCopy.addEventListener("click", copyNode);
 btnCut.addEventListener("click", cutNode);
 btnPaste.addEventListener("click", pasteNode);
@@ -593,16 +995,30 @@ btnAddRel.addEventListener("click", addRelationship);
 
 // Keyboard shortcuts
 document.addEventListener("keydown", (e) => {
+  // Don't handle shortcuts when a modal is open (except Escape to close)
+  const modalOpen = saveModal.style.display !== "none" || versionsModal.style.display !== "none" || findModal.style.display !== "none";
+
+  if (e.key === "Escape") {
+    if (saveModal.style.display !== "none") { closeSaveModal(); e.preventDefault(); return; }
+    if (versionsModal.style.display !== "none") { closeVersionsModal(); e.preventDefault(); return; }
+    if (findModal.style.display !== "none") { closeFindModal(); e.preventDefault(); return; }
+  }
+
+  if (modalOpen) return;
+
   if ((e.ctrlKey || e.metaKey) && e.key === "s") {
     e.preventDefault();
-    saveMap();
+    openSaveModal();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+    e.preventDefault();
+    openFindModal();
   }
   if ((e.ctrlKey || e.metaKey) && e.key === "z") {
     e.preventDefault();
     undo();
   }
   if (e.key === "Delete" || e.key === "Backspace") {
-    // Only delete if not editing a text input
     if (e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA" && !e.target.isContentEditable) {
       delNode();
     }
@@ -619,11 +1035,32 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     pasteNode();
   }
-  if (e.key === "Tab" && currentMap) {
+  if (e.key === "Tab" && currentMap && e.target.tagName !== "INPUT") {
     e.preventDefault();
     addNode();
   }
+  if (e.key === "Insert" && currentMap && e.target.tagName !== "INPUT") {
+    e.preventDefault();
+    addNode();
+  }
+  if (e.key === "Enter" && currentMap && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA" && !e.target.isContentEditable) {
+    e.preventDefault();
+    addSibling();
+  }
 });
+
+// --- Mobile keyboard handling ---
+// When virtual keyboard opens, shrink the layout so the editor stays visible
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", () => {
+    const vvh = window.visualViewport.height;
+    document.documentElement.style.height = vvh + "px";
+    // Scroll editor into view if focused
+    if (document.activeElement === nodeTitleInput || document.activeElement === nodeDescInput) {
+      setTimeout(() => document.activeElement.scrollIntoView({ block: "nearest" }), 50);
+    }
+  });
+}
 
 // --- Init ---
 

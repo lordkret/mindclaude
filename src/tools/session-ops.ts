@@ -15,8 +15,8 @@ import { readXMind } from "../xmind/reader.js";
 import { writeXMind } from "../xmind/writer.js";
 import { mapFilePath, mapExists } from "../storage.js";
 import { renderMap } from "../render/ascii.js";
-import { getOpenDoc, setOpenDoc, OpenDocEntry } from "./map-lifecycle.js";
-import { gitCommitAndPush } from "../web/git-ops.js";
+import { getOpenDoc, setOpenDoc, getAllOpenDocs, OpenDocEntry } from "./map-lifecycle.js";
+import { gitCommitAndPush, gitPull } from "../web/git-ops.js";
 
 function exec(cmd: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -184,7 +184,6 @@ export function registerSessionTools(server: McpServer): void {
       let entry: OpenDocEntry | undefined;
 
       // Search all open docs for one with a sessionNodeId
-      const { getAllOpenDocs } = await import("./map-lifecycle.js");
       for (const [name, e] of getAllOpenDocs()) {
         if (e.sessionNodeId) {
           projectName = name;
@@ -370,6 +369,103 @@ export function registerSessionTools(server: McpServer): void {
           text: `Migrated ${sections.length} sections (${contextCount} to Context, ${memoryCount} to Memory).\n\n${ascii}`,
         }],
       };
+    }
+  );
+
+  server.tool(
+    "session_reload",
+    "Re-read the mindmap from disk/repo and check if something needs attention",
+    {},
+    async () => {
+      const lines: string[] = [];
+
+      // Pull latest maps from git remote
+      const pullResult = await gitPull();
+      lines.push(`Maps git pull: ${pullResult}`);
+
+      // Find active project map (one with sessionNodeId, or first open)
+      let projectName: string | undefined;
+      let entry: OpenDocEntry | undefined;
+
+      for (const [name, e] of getAllOpenDocs()) {
+        if (e.sessionNodeId) {
+          projectName = name;
+          entry = e;
+          break;
+        }
+      }
+      if (!projectName) {
+        // Fall back to first open non-global doc
+        for (const [name, e] of getAllOpenDocs()) {
+          if (name !== "global") {
+            projectName = name;
+            entry = e;
+            break;
+          }
+        }
+      }
+
+      if (!projectName || !entry) {
+        return {
+          content: [{ type: "text" as const, text: "No project map is open. Use start_session first." }],
+          isError: true,
+        };
+      }
+
+      // Re-read the map from disk
+      const path = mapFilePath(projectName);
+      if (mapExists(projectName)) {
+        const sessionNodeId = entry.sessionNodeId;
+        const projectPath = entry.projectPath;
+        const { doc, idMapper } = readXMind(path);
+        entry.doc = doc;
+        entry.idMapper = idMapper;
+        entry.sessionNodeId = sessionNodeId;
+        entry.projectPath = projectPath;
+        lines.push(`Reloaded "${projectName}" from disk.`);
+      }
+
+      // Check project git status
+      if (entry.projectPath) {
+        try {
+          const status = await exec("git", ["status", "--porcelain"], entry.projectPath);
+          if (status) {
+            const fileCount = status.split("\n").length;
+            lines.push(`\nWorking tree: ${fileCount} changed file(s)`);
+            lines.push(status);
+          } else {
+            lines.push("\nWorking tree: clean");
+          }
+        } catch {
+          lines.push("\nWorking tree: could not check git status");
+        }
+
+        // Check for unpushed commits
+        try {
+          const unpushed = await exec(
+            "git",
+            ["log", "@{u}..HEAD", "--oneline"],
+            entry.projectPath
+          );
+          if (unpushed) {
+            lines.push(`\nUnpushed commits:\n${unpushed}`);
+          }
+        } catch {
+          // no upstream or other issue, skip
+        }
+      }
+
+      // Render the Context branch
+      const rootId = activeSheet(entry.doc).rootTopic.id;
+      const contextNode = findChildByTitle(entry.doc, rootId, "Context");
+      if (contextNode) {
+        entry.doc.focusNodeId = contextNode.id;
+        const ascii = renderMap(entry.doc);
+        entry.doc.focusNodeId = null;
+        lines.push(`\n--- Context ---\n${ascii}`);
+      }
+
+      return { content: [{ type: "text" as const, text: lines.join("\n") }] };
     }
   );
 }

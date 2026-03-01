@@ -133,6 +133,24 @@ migrate_memory project="my-project" markdown_content="## Architecture\n- Compone
 
 Sections (`## `) are categorized into Context (architecture, deployment, API, files) or Memory (conventions, patterns, issues) branches.
 
+### Slash commands
+
+MindClaude ships with Claude Code slash commands in `.claude/commands/`. To use them in your own project, copy them into your project's `.claude/commands/` directory:
+
+```bash
+# From your project root
+mkdir -p .claude/commands
+cp /path/to/mindclaude/.claude/commands/session_end.md .claude/commands/
+cp /path/to/mindclaude/.claude/commands/session_reload.md .claude/commands/
+```
+
+Available commands:
+
+| Command | Description |
+|---------|-------------|
+| `/session_end` | End the current session — reviews changes, calls `end_session` with summary, decisions, and files changed. Accepts optional arguments as the summary. |
+| `/session_reload` | Reload the mindmap from disk/repo, check for git changes, uncommitted files, and unpushed commits. |
+
 ## MCP tools reference
 
 ### Map lifecycle

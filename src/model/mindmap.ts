@@ -208,6 +208,34 @@ export function countDescendants(node: MindMapNode): number {
   return count;
 }
 
+export function findChildByTitle(
+  doc: MindMapDocument,
+  parentId: string,
+  title: string
+): MindMapNode | undefined {
+  const parent = doc.nodeIndex.get(parentId);
+  if (!parent) return undefined;
+  return parent.children.find((c) => c.title === title);
+}
+
+export function createProjectMap(name: string): MindMapDocument {
+  const doc = createDocument(name);
+  const rootId = activeSheet(doc).rootTopic.id;
+  addNode(doc, rootId, "Context");
+  addNode(doc, rootId, "Memory");
+  addNode(doc, rootId, "Sessions");
+  return doc;
+}
+
+export function createGlobalMap(): MindMapDocument {
+  const doc = createDocument("global");
+  const rootId = activeSheet(doc).rootTopic.id;
+  addNode(doc, rootId, "Preferences");
+  addNode(doc, rootId, "Tools");
+  addNode(doc, rootId, "Projects");
+  return doc;
+}
+
 export function searchNodes(doc: MindMapDocument, query: string): MindMapNode[] {
   const lower = query.toLowerCase();
   const results: MindMapNode[] = [];

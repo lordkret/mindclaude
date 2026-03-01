@@ -1,0 +1,375 @@
+import { z } from "zod";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { execFile } from "node:child_process";
+import { MindMapNode } from "../model/types.js";
+import {
+  createProjectMap,
+  createGlobalMap,
+  findChildByTitle,
+  addNode,
+  editNode,
+  setFolded,
+  activeSheet,
+} from "../model/mindmap.js";
+import { readXMind } from "../xmind/reader.js";
+import { writeXMind } from "../xmind/writer.js";
+import { mapFilePath, mapExists } from "../storage.js";
+import { renderMap } from "../render/ascii.js";
+import { getOpenDoc, setOpenDoc, OpenDocEntry } from "./map-lifecycle.js";
+import { gitCommitAndPush } from "../web/git-ops.js";
+
+function exec(cmd: string, args: string[], cwd: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(cmd, args, { cwd, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) reject(new Error(`${cmd} ${args.join(" ")} failed: ${stderr || err.message}`));
+      else resolve(stdout.trim());
+    });
+  });
+}
+
+function openOrCreateProjectMap(name: string): OpenDocEntry {
+  let entry = getOpenDoc(name);
+  if (entry) return entry;
+
+  if (mapExists(name)) {
+    const path = mapFilePath(name);
+    const { doc, idMapper } = readXMind(path);
+    entry = { doc, idMapper };
+  } else {
+    const doc = createProjectMap(name);
+    entry = { doc };
+    // Save to disk immediately
+    const path = mapFilePath(name);
+    writeXMind(entry.doc, path, entry.idMapper);
+  }
+  setOpenDoc(name, entry);
+  return entry;
+}
+
+async function detectChanges(
+  entry: OpenDocEntry,
+  sessionsNodeId: string
+): Promise<string> {
+  const lines: string[] = [];
+
+  // Check Sessions node labels for last_end and last_head
+  const sessionsNode = entry.doc.nodeIndex.get(sessionsNodeId);
+  const labels = sessionsNode?.labels || [];
+  const lastHead = labels.find((l) => l.startsWith("last_head:"))?.slice("last_head:".length);
+  const lastEnd = labels.find((l) => l.startsWith("last_end:"))?.slice("last_end:".length);
+
+  if (lastEnd) {
+    lines.push(`Last session ended: ${lastEnd}`);
+  }
+
+  // Detect git changes in the project directory
+  if (entry.projectPath) {
+    try {
+      const status = await exec("git", ["status", "--porcelain"], entry.projectPath);
+      if (status) {
+        const fileCount = status.split("\n").length;
+        lines.push(`Working tree: ${fileCount} changed file(s)`);
+        lines.push(status);
+      } else {
+        lines.push("Working tree: clean");
+      }
+    } catch {
+      lines.push("Working tree: could not check git status");
+    }
+
+    if (lastHead) {
+      try {
+        const log = await exec(
+          "git",
+          ["log", `${lastHead}..HEAD`, "--oneline"],
+          entry.projectPath
+        );
+        if (log) {
+          const commitCount = log.split("\n").length;
+          lines.push(`\n${commitCount} new commit(s) since last session:`);
+          lines.push(log);
+        } else {
+          lines.push("No new commits since last session.");
+        }
+      } catch {
+        lines.push("Could not check commit history (last_head may be invalid).");
+      }
+    }
+  }
+
+  return lines.length > 0 ? lines.join("\n") : "No previous session data found.";
+}
+
+export function registerSessionTools(server: McpServer): void {
+  server.tool(
+    "start_session",
+    "Start a new session for a project — opens/creates project map, creates session node, detects changes",
+    {
+      project: z.string().describe("Project name (used as map name)"),
+      project_path: z.string().optional().describe("Absolute path to the project directory for git operations"),
+    },
+    async ({ project, project_path }) => {
+      const entry = openOrCreateProjectMap(project);
+
+      if (project_path) {
+        entry.projectPath = project_path;
+      }
+
+      // Also open global map if it exists
+      if (mapExists("global") && !getOpenDoc("global")) {
+        const globalPath = mapFilePath("global");
+        const { doc, idMapper } = readXMind(globalPath);
+        setOpenDoc("global", { doc, idMapper });
+      }
+
+      const rootId = activeSheet(entry.doc).rootTopic.id;
+      const sessionsNode = findChildByTitle(entry.doc, rootId, "Sessions");
+      if (!sessionsNode) {
+        return {
+          content: [{ type: "text" as const, text: "Error: Sessions branch not found in map." }],
+          isError: true,
+        };
+      }
+
+      // Detect changes before creating the new session
+      const changesReport = await detectChanges(entry, sessionsNode.id);
+
+      // Create session node with ISO timestamp
+      const timestamp = new Date().toISOString();
+      const sessionNode = addNode(entry.doc, sessionsNode.id, timestamp);
+      entry.sessionNodeId = sessionNode.id;
+
+      // Fold older sessions (keep latest 5 visible)
+      const sessionChildren = sessionsNode.children;
+      for (let i = 0; i < sessionChildren.length - 5; i++) {
+        setFolded(entry.doc, sessionChildren[i].id, true);
+      }
+
+      // Focus Context branch for rendering
+      const contextNode = findChildByTitle(entry.doc, rootId, "Context");
+      if (contextNode) {
+        entry.doc.focusNodeId = contextNode.id;
+      }
+
+      const ascii = renderMap(entry.doc);
+
+      // Unfocus after rendering so full map is accessible
+      entry.doc.focusNodeId = null;
+
+      const output = [
+        `Session started for "${project}" at ${timestamp}`,
+        "",
+        "--- Changes since last session ---",
+        changesReport,
+        "",
+        "--- Context ---",
+        ascii,
+      ].join("\n");
+
+      return { content: [{ type: "text" as const, text: output }] };
+    }
+  );
+
+  server.tool(
+    "end_session",
+    "End the current session — saves summary and metadata to the session node",
+    {
+      summary: z.string().describe("Summary of what was done this session"),
+      decisions: z.string().optional().describe("Key decisions made"),
+      files_changed: z.string().optional().describe("List of files changed"),
+    },
+    async ({ summary, decisions, files_changed }) => {
+      // Find the project map with an active session
+      let projectName: string | undefined;
+      let entry: OpenDocEntry | undefined;
+
+      // Search all open docs for one with a sessionNodeId
+      const { getAllOpenDocs } = await import("./map-lifecycle.js");
+      for (const [name, e] of getAllOpenDocs()) {
+        if (e.sessionNodeId) {
+          projectName = name;
+          entry = e;
+          break;
+        }
+      }
+
+      if (!projectName || !entry || !entry.sessionNodeId) {
+        return {
+          content: [{ type: "text" as const, text: "No active session found. Use start_session first." }],
+          isError: true,
+        };
+      }
+
+      // Build structured notes
+      const notesParts = [`Summary: ${summary}`];
+      if (decisions) notesParts.push(`Decisions: ${decisions}`);
+      if (files_changed) notesParts.push(`Files changed: ${files_changed}`);
+      const notes = notesParts.join("\n\n");
+
+      // Update the session node
+      editNode(entry.doc, entry.sessionNodeId, { notes });
+
+      // Update Sessions branch labels with metadata
+      const rootId = activeSheet(entry.doc).rootTopic.id;
+      const sessionsNode = findChildByTitle(entry.doc, rootId, "Sessions");
+      if (sessionsNode) {
+        const now = new Date().toISOString();
+        const newLabels = (sessionsNode.labels || []).filter(
+          (l) => !l.startsWith("last_end:") && !l.startsWith("last_head:")
+        );
+        newLabels.push(`last_end:${now}`);
+
+        // Get current git HEAD if project path is available
+        if (entry.projectPath) {
+          try {
+            const head = await exec("git", ["rev-parse", "HEAD"], entry.projectPath);
+            newLabels.push(`last_head:${head}`);
+          } catch {
+            // no git HEAD available
+          }
+        }
+
+        editNode(entry.doc, sessionsNode.id, { labels: newLabels });
+      }
+
+      // Save the map
+      const path = mapFilePath(projectName);
+      writeXMind(entry.doc, path, entry.idMapper);
+
+      // Git commit
+      try {
+        await gitCommitAndPush(path, projectName, `End session: ${summary.slice(0, 50)}`);
+      } catch {
+        // non-fatal
+      }
+
+      // Clear session
+      entry.sessionNodeId = undefined;
+
+      return {
+        content: [{ type: "text" as const, text: `Session ended for "${projectName}". Summary saved.` }],
+      };
+    }
+  );
+
+  server.tool(
+    "init_global_map",
+    "Initialize the global mindmap with Preferences, Tools, Projects branches",
+    {},
+    async () => {
+      if (getOpenDoc("global")) {
+        const doc = getOpenDoc("global")!.doc;
+        const ascii = renderMap(doc);
+        return { content: [{ type: "text" as const, text: `Global map already exists and is open.\n\n${ascii}` }] };
+      }
+
+      if (mapExists("global")) {
+        const path = mapFilePath("global");
+        const { doc, idMapper } = readXMind(path);
+        setOpenDoc("global", { doc, idMapper });
+        const ascii = renderMap(doc);
+        return { content: [{ type: "text" as const, text: `Opened existing global map.\n\n${ascii}` }] };
+      }
+
+      const doc = createGlobalMap();
+      const entry: OpenDocEntry = { doc };
+      setOpenDoc("global", entry);
+      const path = mapFilePath("global");
+      writeXMind(doc, path);
+
+      try {
+        await gitCommitAndPush(path, "global", "Initialize global mindmap");
+      } catch {
+        // non-fatal
+      }
+
+      const ascii = renderMap(doc);
+      return { content: [{ type: "text" as const, text: `Created global map.\n\n${ascii}` }] };
+    }
+  );
+
+  server.tool(
+    "migrate_memory",
+    "Migrate markdown memory content into a project mindmap's Context and Memory branches",
+    {
+      project: z.string().describe("Project name (map name)"),
+      markdown_content: z.string().describe("Markdown content to parse and import"),
+    },
+    async ({ project, markdown_content }) => {
+      const entry = openOrCreateProjectMap(project);
+      const rootId = activeSheet(entry.doc).rootTopic.id;
+      const contextNode = findChildByTitle(entry.doc, rootId, "Context");
+      const memoryNode = findChildByTitle(entry.doc, rootId, "Memory");
+
+      if (!contextNode || !memoryNode) {
+        return {
+          content: [{ type: "text" as const, text: "Error: Context or Memory branch not found." }],
+          isError: true,
+        };
+      }
+
+      // Parse markdown into ## sections
+      const sections: { title: string; content: string }[] = [];
+      const sectionRegex = /^## (.+)$/gm;
+      let match: RegExpExecArray | null;
+      const matches: { title: string; start: number }[] = [];
+
+      while ((match = sectionRegex.exec(markdown_content)) !== null) {
+        matches.push({ title: match[1], start: match.index + match[0].length });
+      }
+
+      for (let i = 0; i < matches.length; i++) {
+        const end = i + 1 < matches.length ? matches[i + 1].start - matches[i + 1].title.length - 4 : markdown_content.length;
+        const content = markdown_content.slice(matches[i].start, end).trim();
+        sections.push({ title: matches[i].title, content });
+      }
+
+      // Categorize sections into Context vs Memory
+      const contextKeywords = [
+        "architecture", "overview", "deployment", "tech stack", "api", "files",
+        "key files", "project overview", "environment", "web server", "frontend",
+        "node data", "id architecture", "file sizes",
+      ];
+      const memoryKeywords = [
+        "conventions", "patterns", "preferences", "issues", "encountered",
+        "workflow", "tips",
+      ];
+
+      let contextCount = 0;
+      let memoryCount = 0;
+
+      for (const section of sections) {
+        const titleLower = section.title.toLowerCase();
+        const isContext = contextKeywords.some((k) => titleLower.includes(k));
+        const isMemory = memoryKeywords.some((k) => titleLower.includes(k));
+
+        const parentNode: MindMapNode = isMemory && !isContext ? memoryNode : contextNode;
+        const newNode = addNode(entry.doc, parentNode.id, section.title);
+        if (section.content) {
+          editNode(entry.doc, newNode.id, { notes: section.content });
+        }
+
+        if (parentNode === contextNode) contextCount++;
+        else memoryCount++;
+      }
+
+      // Save
+      const path = mapFilePath(project);
+      writeXMind(entry.doc, path, entry.idMapper);
+
+      try {
+        await gitCommitAndPush(path, project, `Migrate memory: ${sections.length} sections`);
+      } catch {
+        // non-fatal
+      }
+
+      const ascii = renderMap(entry.doc);
+      return {
+        content: [{
+          type: "text" as const,
+          text: `Migrated ${sections.length} sections (${contextCount} to Context, ${memoryCount} to Memory).\n\n${ascii}`,
+        }],
+      };
+    }
+  );
+}

@@ -3,6 +3,7 @@ import { registerLifecycleTools } from "./tools/map-lifecycle.js";
 import { registerNodeTools } from "./tools/node-ops.js";
 import { registerRelationshipTools } from "./tools/relationship-ops.js";
 import { registerNavigationTools } from "./tools/navigation.js";
+import { registerSessionTools } from "./tools/session-ops.js";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 
@@ -16,6 +17,7 @@ export function createServer(): McpServer {
   registerNodeTools(server);
   registerRelationshipTools(server);
   registerNavigationTools(server);
+  registerSessionTools(server);
   registerResources(server);
   registerPrompts(server);
 

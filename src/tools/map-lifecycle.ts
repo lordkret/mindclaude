@@ -8,14 +8,25 @@ import { listMapFiles, mapFilePath, mapExists } from "../storage.js";
 import { renderMap } from "../render/ascii.js";
 import { gitPull } from "../web/git-ops.js";
 
-// Shared state: open documents
-const openDocs = new Map<string, { doc: MindMapDocument; idMapper?: IdMapper }>();
+export interface OpenDocEntry {
+  doc: MindMapDocument;
+  idMapper?: IdMapper;
+  sessionNodeId?: string;    // current active session node ID
+  projectPath?: string;      // absolute path for git operations
+}
 
-export function getOpenDoc(name: string): { doc: MindMapDocument; idMapper?: IdMapper } | undefined {
+// Shared state: open documents
+const openDocs = new Map<string, OpenDocEntry>();
+
+export function getOpenDoc(name: string): OpenDocEntry | undefined {
   return openDocs.get(name);
 }
 
-export function getAllOpenDocs(): Map<string, { doc: MindMapDocument; idMapper?: IdMapper }> {
+export function setOpenDoc(name: string, entry: OpenDocEntry): void {
+  openDocs.set(name, entry);
+}
+
+export function getAllOpenDocs(): Map<string, OpenDocEntry> {
   return openDocs;
 }
 

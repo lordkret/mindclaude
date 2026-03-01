@@ -4,6 +4,8 @@ const API = "/api";
 let jm = null;
 let currentMap = null;
 let zoomScale = 1;
+const undoStack = [];
+const MAX_UNDO = 50;
 
 const selector = document.getElementById("map-selector");
 const btnSave = document.getElementById("btn-save");
@@ -23,6 +25,8 @@ const btnCollapseAll = document.getElementById("btn-collapse-all");
 const btnExpandAll = document.getElementById("btn-expand-all");
 const btnCollapseSel = document.getElementById("btn-collapse-sel");
 const btnExpandSel = document.getElementById("btn-expand-sel");
+const btnUndo = document.getElementById("btn-undo");
+const btnReload = document.getElementById("btn-reload");
 
 function setStatus(msg, isError) {
   status.textContent = msg;
@@ -153,6 +157,59 @@ function expandSel() {
   });
 }
 
+// --- Undo ---
+
+function pushUndo() {
+  if (!jm || !currentMap) return;
+  try {
+    const snapshot = jm.get_data("node_array");
+    undoStack.push(JSON.stringify(snapshot));
+    if (undoStack.length > MAX_UNDO) undoStack.shift();
+    btnUndo.disabled = false;
+  } catch { /* ignore */ }
+}
+
+function undo() {
+  if (!jm || !currentMap || undoStack.length === 0) return;
+  const snapshot = JSON.parse(undoStack.pop());
+  jm.show(snapshot);
+  btnUndo.disabled = undoStack.length === 0;
+  setStatus("Undone");
+}
+
+// Auto-capture snapshots on edits
+function startUndoCapture() {
+  if (!jm) return;
+  // Capture before node changes via jsMind events
+  jm.add_event_listener((type) => {
+    // type 1=show, 2=resize, 3=edit, 4=select
+    if (type === 3) pushUndo();
+  });
+  // Also capture periodically for drag operations (jsMind doesn't fire edit on drag-drop)
+  let lastData = "";
+  setInterval(() => {
+    if (!jm || !currentMap) return;
+    try {
+      const cur = JSON.stringify(jm.get_data("node_array"));
+      if (cur !== lastData && lastData !== "") {
+        undoStack.push(lastData);
+        if (undoStack.length > MAX_UNDO) undoStack.shift();
+        btnUndo.disabled = false;
+      }
+      lastData = cur;
+    } catch { /* ignore */ }
+  }, 2000);
+}
+
+// --- Reload ---
+
+async function reloadMap() {
+  if (!currentMap) return;
+  pushUndo(); // save current state before reload so user can undo
+  await loadMap(currentMap);
+  setStatus(`Reloaded "${currentMap}"`);
+}
+
 // --- Map list ---
 
 async function loadMapList() {
@@ -198,6 +255,9 @@ async function loadMap(name) {
     currentMap = null;
     btnSave.disabled = true;
     btnDelete.disabled = true;
+    btnUndo.disabled = true;
+    btnReload.disabled = true;
+    undoStack.length = 0;
     if (jm) jm.show({ meta: { name: "", author: "" }, format: "node_array", data: [] });
     relList.innerHTML = "";
     return;
@@ -215,6 +275,8 @@ async function loadMap(name) {
     jm.show(data);
     btnSave.disabled = false;
     btnDelete.disabled = false;
+    btnReload.disabled = false;
+    btnUndo.disabled = undoStack.length === 0;
     setStatus(`Loaded "${name}"`);
     loadRelationships(name);
   } catch (e) {
@@ -412,17 +474,24 @@ btnCollapseAll.addEventListener("click", collapseAll);
 btnExpandAll.addEventListener("click", expandAll);
 btnCollapseSel.addEventListener("click", collapseSel);
 btnExpandSel.addEventListener("click", expandSel);
+btnUndo.addEventListener("click", undo);
+btnReload.addEventListener("click", reloadMap);
 btnAddRel.addEventListener("click", addRelationship);
 
-// Ctrl+S to save
+// Keyboard shortcuts
 document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "s") {
     e.preventDefault();
     saveMap();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+    e.preventDefault();
+    undo();
   }
 });
 
 // --- Init ---
 
 initJsMind();
+startUndoCapture();
 loadMapList();

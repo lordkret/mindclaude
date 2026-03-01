@@ -6,9 +6,9 @@ export interface JsMindNode {
   isroot?: boolean;
   parentid?: string;
   topic: string;
-  "data-notes"?: string;
-  "data-labels"?: string; // JSON array
-  "data-markers"?: string; // JSON array
+  notes?: string;
+  labels?: string; // JSON array
+  markers?: string; // JSON array
 }
 
 export interface JsMindData {
@@ -51,9 +51,9 @@ function walkNode(node: MindMapNode, parentShortId: string | null, out: JsMindNo
   } else {
     jNode.parentid = toLongId(parentShortId, idMapper);
   }
-  if (node.notes) jNode["data-notes"] = node.notes;
-  if (node.labels && node.labels.length > 0) jNode["data-labels"] = JSON.stringify(node.labels);
-  if (node.markers && node.markers.length > 0) jNode["data-markers"] = JSON.stringify(node.markers);
+  if (node.notes) jNode.notes = node.notes;
+  if (node.labels && node.labels.length > 0) jNode.labels = JSON.stringify(node.labels);
+  if (node.markers && node.markers.length > 0) jNode.markers = JSON.stringify(node.markers);
   out.push(jNode);
   for (const child of node.children) {
     walkNode(child, node.id, out, idMapper);
@@ -177,14 +177,14 @@ export function jsMindToDoc(
 }
 
 function applyJsMindExtras(node: MindMapNode, jNode: JsMindNode): void {
-  node.notes = jNode["data-notes"] || undefined;
-  if (jNode["data-labels"]) {
-    try { node.labels = JSON.parse(jNode["data-labels"]); } catch { /* ignore */ }
+  node.notes = jNode.notes || undefined;
+  if (jNode.labels) {
+    try { node.labels = JSON.parse(jNode.labels); } catch { /* ignore */ }
   } else {
     node.labels = undefined;
   }
-  if (jNode["data-markers"]) {
-    try { node.markers = JSON.parse(jNode["data-markers"]); } catch { /* ignore */ }
+  if (jNode.markers) {
+    try { node.markers = JSON.parse(jNode.markers); } catch { /* ignore */ }
   } else {
     node.markers = undefined;
   }

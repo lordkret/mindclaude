@@ -133,6 +133,22 @@ export function registerSessionTools(server: McpServer): void {
         setOpenDoc("global", { doc, idMapper });
       }
 
+      // Register project in global map's Projects branch if not already there
+      const globalEntry = getOpenDoc("global");
+      if (globalEntry) {
+        const globalRoot = activeSheet(globalEntry.doc).rootTopic.id;
+        const projectsBranch = findChildByTitle(globalEntry.doc, globalRoot, "Projects");
+        if (projectsBranch && !findChildByTitle(globalEntry.doc, projectsBranch.id, project)) {
+          const projNode = addNode(globalEntry.doc, projectsBranch.id, project);
+          editNode(globalEntry.doc, projNode.id, { markers: ["node-type:project"] });
+          if (project_path) {
+            editNode(globalEntry.doc, projNode.id, { notes: project_path });
+          }
+          const globalPath = mapFilePath("global");
+          writeXMind(globalEntry.doc, globalPath, globalEntry.idMapper);
+        }
+      }
+
       const rootId = activeSheet(entry.doc).rootTopic.id;
       const sessionsNode = findChildByTitle(entry.doc, rootId, "Sessions");
       if (!sessionsNode) {

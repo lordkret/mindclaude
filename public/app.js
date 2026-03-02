@@ -1162,10 +1162,10 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "ArrowLeft") {
     const sel = jm && jm.get_selected_node();
-    if (sel && sel.children && sel.children.length > 0) {
+    if (sel && sel.parent) {
       e.preventDefault();
       e.stopPropagation();
-      jm.collapse_node(sel);
+      jm.select_node(sel.parent);
     }
   }
 }, true);

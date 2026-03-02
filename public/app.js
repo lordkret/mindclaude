@@ -1292,6 +1292,19 @@ document.addEventListener("keydown", (e) => {
       jm.select_node(sel.parent);
     }
   }
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+    const sel = jm && jm.get_selected_node();
+    if (sel && sel.parent) {
+      const siblings = sel.parent.children;
+      const idx = siblings.indexOf(sel);
+      const next = e.key === "ArrowUp" ? idx - 1 : idx + 1;
+      if (next >= 0 && next < siblings.length) {
+        e.preventDefault();
+        e.stopPropagation();
+        jm.select_node(siblings[next]);
+      }
+    }
+  }
 }, true);
 
 // --- Mobile keyboard handling ---

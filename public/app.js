@@ -855,6 +855,8 @@ async function doSave() {
     if (!res.ok) throw new Error(await res.text());
     const result = await res.json();
     closeSaveModal();
+    modifiedNodes.clear();
+    document.querySelectorAll("jmnode.node-modified").forEach(el => el.classList.remove("node-modified"));
     const git = result.git || "";
     if (git.includes("Push skipped") || git.includes("Push failed")) {
       setStatus(`Saved "${currentMap}" (committed, push skipped)`);

@@ -1149,7 +1149,15 @@ document.addEventListener("keydown", (e) => {
     if (sel && sel.children && sel.children.length > 0) {
       e.preventDefault();
       e.stopPropagation();
-      jm.expand_node(sel);
+      // Check if children are already visible (expanded)
+      const firstChild = sel.children[0];
+      const firstChildEl = document.querySelector(`jmnode[nodeid="${firstChild.id}"]`);
+      const isExpanded = firstChildEl && firstChildEl.offsetParent !== null;
+      if (isExpanded) {
+        jm.select_node(firstChild);
+      } else {
+        jm.expand_node(sel);
+      }
     }
   }
   if (e.key === "ArrowLeft") {

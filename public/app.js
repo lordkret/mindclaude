@@ -1138,21 +1138,29 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     addSibling();
   }
-  if (e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+});
+
+// Capture-phase handler for arrow keys — runs before jsMind's own key handler
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+  if (e.key === "ArrowRight") {
     const sel = jm && jm.get_selected_node();
     if (sel && sel.children && sel.children.length > 0) {
       e.preventDefault();
+      e.stopPropagation();
       jm.expand_node(sel);
     }
   }
-  if (e.key === "ArrowLeft" && !e.ctrlKey && !e.metaKey && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+  if (e.key === "ArrowLeft") {
     const sel = jm && jm.get_selected_node();
     if (sel && sel.children && sel.children.length > 0) {
       e.preventDefault();
+      e.stopPropagation();
       jm.collapse_node(sel);
     }
   }
-});
+}, true);
 
 // --- Mobile keyboard handling ---
 // When virtual keyboard opens, shrink the layout so the editor stays visible

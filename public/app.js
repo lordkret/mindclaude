@@ -573,6 +573,16 @@ function setupDblClickEdit() {
     if (!el || el.tagName.toLowerCase() !== "jmnode") return;
     const selected = jm.get_selected_node();
     if (!selected) return;
+    // If node is a project type, navigate to that map
+    const nodeType = getNodeType(selected);
+    if (nodeType === "project") {
+      const mapName = getPlainTitle(selected);
+      if (mapName && mapName !== currentMap) {
+        selector.value = mapName;
+        loadMap(mapName);
+        return;
+      }
+    }
     // Focus title input for editing
     if (nodeEditor.style.display !== "none") {
       nodeTitleInput.focus();

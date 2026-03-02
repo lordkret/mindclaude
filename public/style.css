@@ -109,6 +109,12 @@ button:disabled { opacity: 0.35; cursor: default; }
 #node-desc-input { flex: 2; min-width: 200px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; background: var(--bg-secondary); color: var(--text); resize: vertical; font-family: inherit; line-height: 1.4; }
 #node-desc-input:focus { outline: none; border-color: var(--accent); }
 
+/* Multi-select highlight (Ctrl+click for linking) */
+jmnodes jmnode.multi-selected { background: var(--node-selected) !important; border-color: var(--success) !important; box-shadow: 0 0 0 2px var(--success) !important; }
+
+/* Inline link label editor */
+#link-label-editor { position: fixed; z-index: 50; padding: 5px 10px; font-size: 13px; border: 1px solid var(--accent); border-radius: 8px; background: var(--bg-secondary); color: var(--text); outline: none; min-width: 180px; box-shadow: 0 2px 12px rgba(0,0,0,0.35); }
+
 /* Description indicator on nodes */
 .node-desc-indicator { display: inline-block; width: 6px; height: 6px; background: var(--accent); border-radius: 50%; margin-left: 5px; vertical-align: middle; opacity: 0.7; }
 

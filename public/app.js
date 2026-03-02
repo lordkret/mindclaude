@@ -7,6 +7,7 @@ let zoomScale = 1;
 const undoStack = [];
 const MAX_UNDO = 50;
 let clipboard = null; // { node, children[] } for copy/cut
+let multiSelect = []; // up to 2 Ctrl+clicked nodes for link creation
 
 const selector = document.getElementById("map-selector");
 const btnSave = document.getElementById("btn-save");
@@ -27,6 +28,7 @@ const btnCollapseAll = document.getElementById("btn-collapse-all");
 const btnExpandAll = document.getElementById("btn-expand-all");
 const btnCollapseSel = document.getElementById("btn-collapse-sel");
 const btnExpandSel = document.getElementById("btn-expand-sel");
+const btnLink = document.getElementById("btn-link");
 const btnUndo = document.getElementById("btn-undo");
 const btnReload = document.getElementById("btn-reload");
 const btnAddNode = document.getElementById("btn-add-node");
@@ -371,6 +373,140 @@ function pasteNode() {
   setStatus("Pasted");
 }
 
+// --- Multi-select and node linking ---
+
+function getJmNodeElement(nodeId) {
+  return document.querySelector(`jmnode[nodeid="${nodeId}"]`);
+}
+
+function updateMultiSelectUI() {
+  document.querySelectorAll("jmnode.multi-selected").forEach((el) => el.classList.remove("multi-selected"));
+  for (const n of multiSelect) {
+    const el = getJmNodeElement(n.id);
+    if (el) el.classList.add("multi-selected");
+  }
+  btnLink.disabled = multiSelect.length !== 2;
+}
+
+function clearMultiSelect() {
+  multiSelect = [];
+  updateMultiSelectUI();
+}
+
+function setupMultiSelect() {
+  const ctr = document.getElementById("jsmind-container");
+  ctr.addEventListener("click", (e) => {
+    if (!jm) return;
+    if (!(e.ctrlKey || e.metaKey)) {
+      if (multiSelect.length > 0) clearMultiSelect();
+      return;
+    }
+    // Find the clicked jmnode element
+    let el = e.target;
+    while (el && el.tagName && el.tagName.toLowerCase() !== "jmnode" && el !== ctr) {
+      el = el.parentElement;
+    }
+    if (!el || el.tagName.toLowerCase() !== "jmnode") return;
+    const nodeId = el.getAttribute("nodeid");
+    if (!nodeId) return;
+    const node = jm.get_node(nodeId);
+    if (!node) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const idx = multiSelect.findIndex((n) => n.id === nodeId);
+    if (idx !== -1) {
+      multiSelect.splice(idx, 1);
+    } else {
+      if (multiSelect.length >= 2) multiSelect.shift();
+      multiSelect.push(node);
+    }
+    updateMultiSelectUI();
+  }, true); // capture phase — fires before jsMind
+}
+
+async function createLink() {
+  if (!jm || !currentMap || multiSelect.length !== 2) return;
+  const [node1, node2] = multiSelect;
+  try {
+    const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`);
+    const rels = await res.json();
+    const newRel = { id: crypto.randomUUID().slice(0, 8), end1Id: node1.id, end2Id: node2.id };
+    rels.push(newRel);
+    await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(rels),
+    });
+    renderRelationships(rels);
+    setStatus("Link created — enter label");
+    showLinkLabelEditor(node2.id, newRel.id);
+    clearMultiSelect();
+  } catch (e) {
+    setStatus(`Error: ${e.message}`, true);
+  }
+}
+
+function showLinkLabelEditor(nodeId, relId) {
+  const existing = document.getElementById("link-label-editor");
+  if (existing) existing.remove();
+
+  const input = document.createElement("input");
+  input.id = "link-label-editor";
+  input.type = "text";
+  input.placeholder = "Label (Enter to save, Esc to skip)";
+
+  // Position below the target node
+  const nodeEl = getJmNodeElement(nodeId);
+  if (nodeEl) {
+    const rect = nodeEl.getBoundingClientRect();
+    input.style.top = (rect.bottom + 8) + "px";
+    input.style.left = rect.left + "px";
+  } else {
+    input.style.top = "50%";
+    input.style.left = "50%";
+    input.style.transform = "translate(-50%, -50%)";
+  }
+
+  document.body.appendChild(input);
+  input.focus();
+
+  let committed = false;
+
+  async function saveLabel() {
+    if (committed) return;
+    committed = true;
+    input.remove();
+    const label = input.value.trim();
+    if (!label) return;
+    try {
+      const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`);
+      const rels = await res.json();
+      const rel = rels.find((r) => r.id === relId);
+      if (rel) {
+        rel.title = label;
+        await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(rels),
+        });
+        renderRelationships(rels);
+        setStatus("Link label saved");
+      }
+    } catch (err) {
+      setStatus(`Error saving label: ${err.message}`, true);
+    }
+  }
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); saveLabel(); }
+    if (e.key === "Escape") { committed = true; input.remove(); setStatus("Link created (no label)"); }
+    e.stopPropagation();
+  });
+  input.addEventListener("blur", () => setTimeout(saveLabel, 120));
+}
+
 // --- Double-click to toggle collapse/expand ---
 
 function setupDblClickToggle() {
@@ -546,6 +682,7 @@ async function loadMap(name) {
     applyZoom(1, 0, 0);
     jm.show(data);
     closeNodeEditor();
+    clearMultiSelect();
     applyDescIndicators();
     btnSave.disabled = false;
     btnVersions.disabled = false;
@@ -991,6 +1128,7 @@ btnFind.addEventListener("click", openFindModal);
 btnCopy.addEventListener("click", copyNode);
 btnCut.addEventListener("click", cutNode);
 btnPaste.addEventListener("click", pasteNode);
+btnLink.addEventListener("click", createLink);
 btnAddRel.addEventListener("click", addRelationship);
 
 // Keyboard shortcuts
@@ -1017,6 +1155,10 @@ document.addEventListener("keydown", (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === "z") {
     e.preventDefault();
     undo();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "l") {
+    e.preventDefault();
+    createLink();
   }
   if (e.key === "Delete" || e.key === "Backspace") {
     if (e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA" && !e.target.isContentEditable) {
@@ -1067,5 +1209,6 @@ if (window.visualViewport) {
 initJsMind();
 startUndoCapture();
 setupDblClickToggle();
+setupMultiSelect();
 setupSelectionTracking();
 loadMapList();

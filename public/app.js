@@ -1250,10 +1250,12 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.key === "Tab" && currentMap && e.target.tagName !== "INPUT") {
     e.preventDefault();
+    e.stopImmediatePropagation();
     addNode();
   }
   if (e.key === "Insert" && currentMap && e.target.tagName !== "INPUT") {
     e.preventDefault();
+    e.stopImmediatePropagation();
     addNode();
   }
   if (e.key === "Enter" && currentMap && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA" && !e.target.isContentEditable) {

@@ -7,6 +7,7 @@ let zoomScale = 1;
 const undoStack = [];
 const MAX_UNDO = 50;
 let clipboard = null; // { node, children[] } for copy/cut
+const modifiedNodes = new Set(); // track node IDs modified in this session
 let multiSelect = []; // up to 2 Ctrl+clicked nodes for link creation
 
 const selector = document.getElementById("map-selector");
@@ -198,6 +199,7 @@ function undo() {
   jm.show(snapshot);
   applyDescIndicators();
   applyNodeTypes();
+  applyModifiedGlow();
   btnUndo.disabled = undoStack.length === 0;
   setStatus("Undone");
 }
@@ -328,6 +330,21 @@ function applyNodeTypes() {
   });
 }
 
+// --- Modified node tracking ---
+
+function markModified(nodeId) {
+  modifiedNodes.add(nodeId);
+  const el = getJmNodeElement(nodeId);
+  if (el) el.classList.add("node-modified");
+}
+
+function applyModifiedGlow() {
+  for (const nodeId of modifiedNodes) {
+    const el = getJmNodeElement(nodeId);
+    if (el) el.classList.add("node-modified");
+  }
+}
+
 // --- Add / Delete node ---
 
 function addNode() {
@@ -338,6 +355,7 @@ function addNode() {
   const id = crypto.randomUUID().slice(0, 8);
   const newNode = jm.add_node(selected, id, "New node");
   if (newNode) {
+    markModified(newNode.id);
     jm.select_node(newNode);
     // Focus the title input in the editor
     setTimeout(() => {
@@ -355,6 +373,7 @@ function addSibling() {
   const id = crypto.randomUUID().slice(0, 8);
   const newNode = jm.add_node(selected.parent, id, "New node");
   if (newNode) {
+    markModified(newNode.id);
     jm.select_node(newNode);
     setTimeout(() => {
       nodeTitleInput.select();
@@ -413,6 +432,7 @@ function pasteSubtree(parent, item) {
   if (node) {
     if (item.desc) setNodeDesc(node, item.desc);
     if (item.type) setNodeType(node, item.type);
+    markModified(node.id);
   }
   for (const child of item.children) {
     pasteSubtree(node, child);
@@ -647,6 +667,7 @@ function applyNodeEditorChanges() {
     const display = buildDisplayTopic(newTitle, !!newDesc, newType);
     jm.update_node(node.id, display);
     applyNodeTypes();
+    markModified(node.id);
   }
 }
 
@@ -769,6 +790,7 @@ async function loadMap(name) {
     jm.show(data);
     closeNodeEditor();
     clearMultiSelect();
+    modifiedNodes.clear();
     applyDescIndicators();
     applyNodeTypes();
     updateGlobalButton();
@@ -931,6 +953,7 @@ async function restoreVersion(sha, msg) {
       jm.show(result.data);
       applyDescIndicators();
       applyNodeTypes();
+      applyModifiedGlow();
     }
     setStatus(`Restored to ${shortSha}`);
   } catch (e) {

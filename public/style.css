@@ -14,6 +14,7 @@
   --node-bg: #16213e;
   --node-selected: #0f3460;
   --shadow: transparent;
+  --modified-glow: rgba(251, 191, 36, 0.6);
 }
 
 body.light {
@@ -31,6 +32,7 @@ body.light {
   --node-bg: #ffffff;
   --node-selected: #e8eaed;
   --shadow: 0 1px 3px rgba(0,0,0,0.1);
+  --modified-glow: rgba(217, 119, 6, 0.5);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -119,6 +121,9 @@ jmnodes jmnode.selected { background: var(--node-selected) !important; border-co
 jmnodes jmnode.root { background: var(--accent) !important; color: #fff !important; font-size: 16px !important; font-weight: bold; }
 jmnodes jmexpander { border-color: var(--accent) !important; color: var(--text) !important; background: var(--node-bg) !important; }
 jmnode.draggable-shadow { background: var(--btn-bg) !important; opacity: 0.6; }
+
+/* Modified node glow */
+jmnodes jmnode.node-modified { box-shadow: 0 0 8px 2px var(--modified-glow) !important; }
 
 /* Node types — border colors */
 jmnodes jmnode.node-type-project { border: 2px solid #6c5ce7 !important; }

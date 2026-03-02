@@ -31,6 +31,7 @@ const btnAddSibling = document.getElementById("btn-add-sibling");
 const btnDelNode = document.getElementById("btn-del-node");
 const btnFind = document.getElementById("btn-find");
 const btnTheme = document.getElementById("btn-theme");
+const btnGlobal = document.getElementById("btn-global");
 const btnCopy = document.getElementById("btn-copy");
 const btnCut = document.getElementById("btn-cut");
 const btnPaste = document.getElementById("btn-paste");
@@ -714,6 +715,7 @@ async function loadMapList() {
     selector.appendChild(opt);
   }
   if (current) selector.value = current;
+  updateGlobalButton();
 }
 
 // --- jsMind init ---
@@ -750,6 +752,7 @@ async function loadMap(name) {
     btnReload.disabled = true;
     undoStack.length = 0;
     closeNodeEditor();
+    updateGlobalButton();
     if (jm) jm.show({ meta: { name: "", author: "" }, format: "node_array", data: [] });
     return;
   }
@@ -768,6 +771,7 @@ async function loadMap(name) {
     clearMultiSelect();
     applyDescIndicators();
     applyNodeTypes();
+    updateGlobalButton();
     btnSave.disabled = false;
     btnVersions.disabled = false;
     btnFind.disabled = false;
@@ -778,6 +782,14 @@ async function loadMap(name) {
   } catch (e) {
     setStatus(`Error loading map: ${e.message}`, true);
   }
+}
+
+// --- Global button visibility ---
+
+function updateGlobalButton() {
+  // Show "← Global" button when viewing any map other than global, and global map exists in selector
+  const hasGlobal = !!selector.querySelector('option[value="global"]');
+  btnGlobal.style.display = hasGlobal && currentMap && currentMap !== "global" ? "" : "none";
 }
 
 // --- Save Modal ---
@@ -1162,6 +1174,12 @@ btnCopy.addEventListener("click", copyNode);
 btnCut.addEventListener("click", cutNode);
 btnPaste.addEventListener("click", pasteNode);
 btnLink.addEventListener("click", createLink);
+btnGlobal.addEventListener("click", () => {
+  if (selector.querySelector('option[value="global"]')) {
+    selector.value = "global";
+    loadMap("global");
+  }
+});
 
 // Keyboard shortcuts
 document.addEventListener("keydown", (e) => {

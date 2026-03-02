@@ -63,6 +63,21 @@ function applyZoom(scale, ox, oy) {
 function zoomIn() { applyZoom(zoomScale + 0.15); }
 function zoomOut() { applyZoom(zoomScale - 0.15); }
 
+function scrollNodeIntoView(nodeId) {
+  const el = document.querySelector(`jmnode[nodeid="${nodeId}"]`);
+  if (!el || el.offsetParent === null) return;
+  const ctr = document.getElementById("jsmind-container");
+  const nr = el.getBoundingClientRect();
+  const cr = ctr.getBoundingClientRect();
+  const pad = 40;
+  let dx = 0, dy = 0;
+  if (nr.left < cr.left + pad) dx = cr.left + pad - nr.left;
+  else if (nr.right > cr.right - pad) dx = cr.right - pad - nr.right;
+  if (nr.top < cr.top + pad) dy = cr.top + pad - nr.top;
+  else if (nr.bottom > cr.bottom - pad) dy = cr.bottom - pad - nr.bottom;
+  if (dx || dy) applyZoom(zoomScale, zoomOffsetX + dx, zoomOffsetY + dy);
+}
+
 function zoomFit() {
   const ctr = document.getElementById("jsmind-container");
   const inner = ctr.querySelector("jmnodes");
@@ -611,6 +626,7 @@ function setupSelectionTracking() {
 
       if (sel) {
         openNodeEditor(sel);
+        setTimeout(() => scrollNodeIntoView(sel.id), 50);
       } else {
         closeNodeEditor();
       }
@@ -1157,6 +1173,7 @@ document.addEventListener("keydown", (e) => {
         jm.select_node(firstChild);
       } else {
         jm.expand_node(sel);
+        setTimeout(() => scrollNodeIntoView(sel.id), 100);
       }
     }
   }

@@ -680,20 +680,16 @@ nodeEditorClose.addEventListener("click", () => {
 });
 nodeEditorExpand.addEventListener("click", toggleEditorExpand);
 
-// Prevent keyboard shortcuts while editing in the panel
-nodeTitleInput.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { nodeTitleInput.blur(); return; }
-  if (e.key === "Tab") { e.preventDefault(); nodeDescInput.focus(); return; }
+// Prevent keyboard shortcuts while editing in the panel (but let Ctrl+S through for save)
+function editorKeydown(e) {
+  if (e.key === "Escape") { e.target.blur(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") return; // let save shortcut bubble up
+  if (e.target === nodeTitleInput && e.key === "Tab") { e.preventDefault(); nodeDescInput.focus(); return; }
   e.stopPropagation();
-});
-nodeDescInput.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { nodeDescInput.blur(); return; }
-  e.stopPropagation();
-});
-nodeTypeSelect.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { nodeTypeSelect.blur(); return; }
-  e.stopPropagation();
-});
+}
+nodeTitleInput.addEventListener("keydown", editorKeydown);
+nodeDescInput.addEventListener("keydown", editorKeydown);
+nodeTypeSelect.addEventListener("keydown", editorKeydown);
 
 // --- Selection tracking ---
 

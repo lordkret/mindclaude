@@ -98,6 +98,7 @@ button:disabled { opacity: 0.35; cursor: default; }
 #node-editor-close, #node-editor-expand { padding: 2px 8px; font-size: 14px; min-width: 28px; border-radius: 6px; }
 #node-editor-expand { display: none; }
 #node-title-input { flex: 1; min-width: 120px; border-radius: 8px; padding: 6px 10px; font-size: 14px; font-weight: 600; }
+#node-type-select { min-width: 120px; border-radius: 8px; padding: 6px 10px; font-size: 13px; flex-shrink: 0; }
 #node-desc-input { flex: 2; min-width: 200px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 13px; background: var(--bg-secondary); color: var(--text); resize: vertical; font-family: inherit; line-height: 1.4; }
 #node-desc-input:focus { outline: none; border-color: var(--accent); }
 
@@ -118,6 +119,13 @@ jmnodes jmnode.selected { background: var(--node-selected) !important; border-co
 jmnodes jmnode.root { background: var(--accent) !important; color: #fff !important; font-size: 16px !important; font-weight: bold; }
 jmnodes jmexpander { border-color: var(--accent) !important; color: var(--text) !important; background: var(--node-bg) !important; }
 jmnode.draggable-shadow { background: var(--btn-bg) !important; opacity: 0.6; }
+
+/* Node types — border colors */
+jmnodes jmnode.node-type-project { border: 2px solid #6c5ce7 !important; }
+jmnodes jmnode.node-type-agent { border: 2px solid #e17055 !important; }
+jmnodes jmnode.node-type-bg-agent { border: 2px dashed #e17055 !important; }
+jmnodes jmnode.node-type-mcp { border: 2px solid #00b894 !important; }
+jmnodes jmnode.node-type-code { border: 2px solid #0984e3 !important; }
 
 /* Mobile */
 @media (max-width: 768px) {
@@ -167,6 +175,14 @@ jmnode.draggable-shadow { background: var(--btn-bg) !important; opacity: 0.6; }
     width: 100%;
     min-width: unset;
     font-size: 16px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    min-height: 44px;
+  }
+  #node-type-select {
+    width: 100%;
+    min-width: unset;
+    font-size: 15px;
     padding: 10px 12px;
     border-radius: 10px;
     min-height: 44px;

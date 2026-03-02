@@ -196,6 +196,7 @@ function undo() {
   const snapshot = JSON.parse(undoStack.pop());
   jm.show(snapshot);
   applyDescIndicators();
+  applyNodeTypes();
   btnUndo.disabled = undoStack.length === 0;
   setStatus("Undone");
 }
@@ -235,13 +236,12 @@ async function reloadMap() {
 
 // --- Node description helpers ---
 
-// Build display topic: title + dot indicator if node has description
-function buildDisplayTopic(title, hasDesc) {
+// Build display topic: icon prefix + title + dot indicator if node has description
+function buildDisplayTopic(title, hasDesc, nodeType) {
   const escaped = escapeHtmlInline(title);
-  if (hasDesc) {
-    return escaped + '<span class="node-desc-indicator"></span>';
-  }
-  return escaped;
+  const icon = nodeType && NODE_TYPE_ICONS[nodeType] ? NODE_TYPE_ICONS[nodeType] + " " : "";
+  const suffix = hasDesc ? '<span class="node-desc-indicator"></span>' : "";
+  return icon + escaped + suffix;
 }
 
 function escapeHtmlInline(str) {
@@ -251,7 +251,12 @@ function escapeHtmlInline(str) {
 // Get plain title from a node (strip HTML indicator)
 function getPlainTitle(node) {
   if (!node || !node.topic) return "";
-  return node.topic.replace(/<span class="node-desc-indicator"><\/span>/, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+  let t = node.topic.replace(/<span class="node-desc-indicator"><\/span>/, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"');
+  // Strip node-type icon prefixes
+  for (const icon of Object.values(NODE_TYPE_ICONS)) {
+    if (t.startsWith(icon + " ")) { t = t.slice(icon.length + 1); break; }
+  }
+  return t;
 }
 
 // Get description stored in node data
@@ -277,10 +282,48 @@ function applyDescIndicators() {
   forEachNode(jm.mind.root, 0, (node) => {
     const hasDesc = !!(node.data && node.data["notes"]);
     const plain = getPlainTitle(node);
-    const display = buildDisplayTopic(plain, hasDesc);
+    const nodeType = getNodeType(node);
+    const display = buildDisplayTopic(plain, hasDesc, nodeType);
     if (node.topic !== display) {
       jm.update_node(node.id, display);
     }
+  });
+}
+
+// --- Node Types ---
+
+const NODE_TYPE_CLASSES = ["node-type-project", "node-type-agent", "node-type-bg-agent", "node-type-mcp", "node-type-code"];
+const NODE_TYPE_ICONS = { project: "▣", agent: "◈", "bg-agent": "◇", mcp: "⚡", code: "⟨⟩" };
+
+function getNodeType(node) {
+  if (!node || !node.data) return "";
+  let markers = node.data.markers;
+  if (typeof markers === "string") { try { markers = JSON.parse(markers); } catch { return ""; } }
+  if (!Array.isArray(markers)) return "";
+  const m = markers.find(m => m.startsWith("node-type:"));
+  return m ? m.slice("node-type:".length) : "";
+}
+
+function setNodeType(node, type) {
+  if (!node) return;
+  if (!node.data) node.data = {};
+  let markers = node.data.markers;
+  if (typeof markers === "string") { try { markers = JSON.parse(markers); } catch { markers = []; } }
+  if (!Array.isArray(markers)) markers = [];
+  markers = markers.filter(m => !m.startsWith("node-type:"));
+  if (type) markers.push("node-type:" + type);
+  node.data.markers = markers.length > 0 ? JSON.stringify(markers) : undefined;
+  if (!node.data.markers) delete node.data.markers;
+}
+
+function applyNodeTypes() {
+  if (!jm || !jm.mind || !jm.mind.root) return;
+  forEachNode(jm.mind.root, 0, (node) => {
+    const el = getJmNodeElement(node.id);
+    if (!el) return;
+    el.classList.remove(...NODE_TYPE_CLASSES);
+    const t = getNodeType(node);
+    if (t) el.classList.add("node-type-" + t);
   });
 }
 
@@ -331,7 +374,7 @@ function delNode() {
 // --- Copy / Cut / Paste ---
 
 function copySubtree(node) {
-  const item = { id: node.id, topic: node.topic, desc: getNodeDesc(node), children: [] };
+  const item = { id: node.id, topic: node.topic, desc: getNodeDesc(node), type: getNodeType(node), children: [] };
   if (node.children) {
     for (const child of node.children) {
       item.children.push(copySubtree(child));
@@ -364,10 +407,11 @@ function cutNode() {
 function pasteSubtree(parent, item) {
   const newId = crypto.randomUUID().slice(0, 8);
   const plainTitle = getPlainTitle({ topic: item.topic });
-  const display = buildDisplayTopic(plainTitle, !!item.desc);
+  const display = buildDisplayTopic(plainTitle, !!item.desc, item.type);
   const node = jm.add_node(parent, newId, display);
-  if (node && item.desc) {
-    setNodeDesc(node, item.desc);
+  if (node) {
+    if (item.desc) setNodeDesc(node, item.desc);
+    if (item.type) setNodeType(node, item.type);
   }
   for (const child of item.children) {
     pasteSubtree(node, child);
@@ -541,6 +585,7 @@ function setupDblClickEdit() {
 
 const nodeEditor = document.getElementById("node-editor");
 const nodeTitleInput = document.getElementById("node-title-input");
+const nodeTypeSelect = document.getElementById("node-type-select");
 const nodeDescInput = document.getElementById("node-desc-input");
 const nodeEditorClose = document.getElementById("node-editor-close");
 const nodeEditorExpand = document.getElementById("node-editor-expand");
@@ -550,6 +595,7 @@ function openNodeEditor(node) {
   if (!node) return;
   editingNodeId = node.id;
   nodeTitleInput.value = getPlainTitle(node);
+  nodeTypeSelect.value = getNodeType(node);
   nodeDescInput.value = getNodeDesc(node);
   nodeEditor.style.display = "flex";
   nodeEditor.classList.remove("expanded");
@@ -578,19 +624,24 @@ function applyNodeEditorChanges() {
 
   const newTitle = nodeTitleInput.value.trim() || "Untitled";
   const newDesc = nodeDescInput.value.trim();
+  const newType = nodeTypeSelect.value;
   const oldTitle = getPlainTitle(node);
   const oldDesc = getNodeDesc(node);
+  const oldType = getNodeType(node);
 
-  if (newTitle !== oldTitle || newDesc !== oldDesc) {
+  if (newTitle !== oldTitle || newDesc !== oldDesc || newType !== oldType) {
     pushUndo();
     setNodeDesc(node, newDesc);
-    const display = buildDisplayTopic(newTitle, !!newDesc);
+    setNodeType(node, newType);
+    const display = buildDisplayTopic(newTitle, !!newDesc, newType);
     jm.update_node(node.id, display);
+    applyNodeTypes();
   }
 }
 
 nodeTitleInput.addEventListener("input", applyNodeEditorChanges);
 nodeDescInput.addEventListener("input", applyNodeEditorChanges);
+nodeTypeSelect.addEventListener("change", applyNodeEditorChanges);
 nodeEditorClose.addEventListener("click", () => {
   closeNodeEditor();
   if (jm) jm.select_clear();
@@ -605,6 +656,10 @@ nodeTitleInput.addEventListener("keydown", (e) => {
 });
 nodeDescInput.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { nodeDescInput.blur(); return; }
+  e.stopPropagation();
+});
+nodeTypeSelect.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { nodeTypeSelect.blur(); return; }
   e.stopPropagation();
 });
 
@@ -702,6 +757,7 @@ async function loadMap(name) {
     closeNodeEditor();
     clearMultiSelect();
     applyDescIndicators();
+    applyNodeTypes();
     btnSave.disabled = false;
     btnVersions.disabled = false;
     btnFind.disabled = false;
@@ -852,6 +908,7 @@ async function restoreVersion(sha, msg) {
       pushUndo();
       jm.show(result.data);
       applyDescIndicators();
+      applyNodeTypes();
     }
     setStatus(`Restored to ${shortSha}`);
   } catch (e) {
@@ -1194,7 +1251,7 @@ if (window.visualViewport) {
     const vvh = window.visualViewport.height;
     document.documentElement.style.height = vvh + "px";
     // Scroll editor into view if focused
-    if (document.activeElement === nodeTitleInput || document.activeElement === nodeDescInput) {
+    if (document.activeElement === nodeTitleInput || document.activeElement === nodeDescInput || document.activeElement === nodeTypeSelect) {
       setTimeout(() => document.activeElement.scrollIntoView({ block: "nearest" }), 50);
     }
   });

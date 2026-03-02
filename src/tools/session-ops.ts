@@ -100,6 +100,17 @@ async function detectChanges(
   return lines.length > 0 ? lines.join("\n") : "No previous session data found.";
 }
 
+/** Extract bullet points from markdown content. Returns array of point texts, or empty if not a bullet list. */
+function extractBullets(content: string): string[] {
+  const lines = content.split("\n").map((l) => l.trim()).filter(Boolean);
+  const bulletPattern = /^(?:[-*•]|\d+[.)]) (.+)$/;
+  const bullets = lines
+    .map((l) => { const m = l.match(bulletPattern); return m ? m[1].trim() : null; })
+    .filter((b): b is string => b !== null);
+  // Only treat as bullet list if most lines are bullets
+  return bullets.length >= 2 && bullets.length >= lines.length * 0.6 ? bullets : [];
+}
+
 export function registerSessionTools(server: McpServer): void {
   server.tool(
     "start_session",
@@ -345,7 +356,14 @@ export function registerSessionTools(server: McpServer): void {
         const parentNode: MindMapNode = isMemory && !isContext ? memoryNode : contextNode;
         const newNode = addNode(entry.doc, parentNode.id, section.title);
         if (section.content) {
-          editNode(entry.doc, newNode.id, { notes: section.content });
+          const bullets = extractBullets(section.content);
+          if (bullets.length > 1) {
+            for (const bullet of bullets) {
+              addNode(entry.doc, newNode.id, bullet);
+            }
+          } else {
+            editNode(entry.doc, newNode.id, { notes: section.content });
+          }
         }
 
         if (parentNode === contextNode) contextCount++;

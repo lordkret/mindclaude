@@ -221,7 +221,8 @@ export function findChildByTitle(
 export function createProjectMap(name: string): MindMapDocument {
   const doc = createDocument(name);
   const rootId = activeSheet(doc).rootTopic.id;
-  addNode(doc, rootId, "Context");
+  const contextNode = addNode(doc, rootId, "Context");
+  addNode(doc, contextNode.id, "Project Purpose");
   addNode(doc, rootId, "Memory");
   addNode(doc, rootId, "Sessions");
   return doc;

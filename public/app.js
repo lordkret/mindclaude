@@ -500,15 +500,25 @@ function showLinkLabelEditor(nodeId, relId) {
   input.addEventListener("blur", () => setTimeout(saveLabel, 120));
 }
 
-// --- Double-click to toggle collapse/expand ---
+// --- Double-click to edit node ---
 
-function setupDblClickToggle() {
+function setupDblClickEdit() {
   const ctr = document.getElementById("jsmind-container");
   ctr.addEventListener("dblclick", (e) => {
     if (!jm) return;
+    // Find the clicked jmnode element
+    let el = e.target;
+    while (el && el.tagName && el.tagName.toLowerCase() !== "jmnode" && el !== ctr) {
+      el = el.parentElement;
+    }
+    if (!el || el.tagName.toLowerCase() !== "jmnode") return;
     const selected = jm.get_selected_node();
-    if (!selected || !selected.children || selected.children.length === 0) return;
-    jm.toggle_node(selected);
+    if (!selected) return;
+    // Focus title input for editing
+    if (nodeEditor.style.display !== "none") {
+      nodeTitleInput.focus();
+      nodeTitleInput.select();
+    }
   });
 }
 
@@ -984,10 +994,11 @@ async function deleteMap() {
 }
 
 
-// --- Pinch-to-zoom (touch) ---
+// --- Pinch-to-zoom (touch) and long-press to expand/collapse ---
 
 let pinchStartDist = 0;
 let pinchStartScale = 1;
+let longPressTimer = null;
 
 function getTouchDist(e) {
   const [a, b] = [e.touches[0], e.touches[1]];
@@ -998,13 +1009,36 @@ const container = document.getElementById("jsmind-container");
 
 container.addEventListener("touchstart", (e) => {
   if (e.touches.length === 2) {
+    clearTimeout(longPressTimer); longPressTimer = null;
     e.preventDefault();
     pinchStartDist = getTouchDist(e);
     pinchStartScale = zoomScale;
+    return;
+  }
+  if (e.touches.length === 1) {
+    let el = e.target;
+    while (el && el.tagName && el.tagName.toLowerCase() !== "jmnode" && el !== container) {
+      el = el.parentElement;
+    }
+    if (el && el.tagName && el.tagName.toLowerCase() === "jmnode") {
+      const nodeId = el.getAttribute("nodeid");
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        if (!jm || !nodeId) return;
+        const node = jm.get_node(nodeId);
+        if (node && node.children && node.children.length > 0) {
+          jm.toggle_node(node);
+        }
+      }, 600);
+    }
   }
 }, { passive: false });
 
+container.addEventListener("touchend", () => { clearTimeout(longPressTimer); longPressTimer = null; });
+container.addEventListener("touchcancel", () => { clearTimeout(longPressTimer); longPressTimer = null; });
+
 container.addEventListener("touchmove", (e) => {
+  if (e.touches.length === 1) { clearTimeout(longPressTimer); longPressTimer = null; }
   if (e.touches.length === 2) {
     e.preventDefault();
     const dist = getTouchDist(e);
@@ -1104,6 +1138,20 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     addSibling();
   }
+  if (e.key === "ArrowRight" && !e.ctrlKey && !e.metaKey && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+    const sel = jm && jm.get_selected_node();
+    if (sel && sel.children && sel.children.length > 0) {
+      e.preventDefault();
+      jm.expand_node(sel);
+    }
+  }
+  if (e.key === "ArrowLeft" && !e.ctrlKey && !e.metaKey && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
+    const sel = jm && jm.get_selected_node();
+    if (sel && sel.children && sel.children.length > 0) {
+      e.preventDefault();
+      jm.collapse_node(sel);
+    }
+  }
 });
 
 // --- Mobile keyboard handling ---
@@ -1123,7 +1171,7 @@ if (window.visualViewport) {
 
 initJsMind();
 startUndoCapture();
-setupDblClickToggle();
+setupDblClickEdit();
 setupMultiSelect();
 setupSelectionTracking();
 loadMapList();

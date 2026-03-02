@@ -44,7 +44,6 @@
       <button id="btn-versions" disabled title="Version history">Versions</button>
       <button id="btn-new">New Map</button>
       <button id="btn-delete" disabled>Delete</button>
-      <button id="btn-sidebar" title="Cross-links">Links</button>
       <button id="btn-theme" title="Toggle light/dark theme">Light</button>
       <span id="status"></span>
     </div>
@@ -62,18 +61,6 @@
       <input type="text" id="node-title-input" placeholder="Title" />
       <textarea id="node-desc-input" placeholder="Description (optional)" rows="3"></textarea>
     </div>
-    <aside id="sidebar">
-      <button class="close-sidebar" style="display:none" id="btn-close-sidebar">Close</button>
-      <h3>Cross-links</h3>
-      <ul id="rel-list"></ul>
-      <div id="rel-form">
-        <h4>Add cross-link</h4>
-        <input id="rel-end1" placeholder="Node ID 1" />
-        <input id="rel-end2" placeholder="Node ID 2" />
-        <input id="rel-title" placeholder="Label (optional)" />
-        <button id="btn-add-rel">Add</button>
-      </div>
-    </aside>
   </div>
 
   <!-- Save Modal -->

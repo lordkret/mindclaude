@@ -14,12 +14,7 @@ const btnSave = document.getElementById("btn-save");
 const btnVersions = document.getElementById("btn-versions");
 const btnNew = document.getElementById("btn-new");
 const btnDelete = document.getElementById("btn-delete");
-const btnSidebar = document.getElementById("btn-sidebar");
-const btnCloseSidebar = document.getElementById("btn-close-sidebar");
-const sidebar = document.getElementById("sidebar");
 const status = document.getElementById("status");
-const relList = document.getElementById("rel-list");
-const btnAddRel = document.getElementById("btn-add-rel");
 const btnZoomIn = document.getElementById("btn-zoom-in");
 const btnZoomOut = document.getElementById("btn-zoom-out");
 const btnZoomFit = document.getElementById("btn-zoom-fit");
@@ -439,7 +434,6 @@ async function createLink() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(rels),
     });
-    renderRelationships(rels);
     setStatus("Link created — enter label");
     showLinkLabelEditor(node2.id, newRel.id);
     clearMultiSelect();
@@ -491,7 +485,6 @@ function showLinkLabelEditor(nodeId, relId) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(rels),
         });
-        renderRelationships(rels);
         setStatus("Link label saved");
       }
     } catch (err) {
@@ -667,7 +660,6 @@ async function loadMap(name) {
     undoStack.length = 0;
     closeNodeEditor();
     if (jm) jm.show({ meta: { name: "", author: "" }, format: "node_array", data: [] });
-    relList.innerHTML = "";
     return;
   }
 
@@ -691,7 +683,6 @@ async function loadMap(name) {
     btnReload.disabled = false;
     btnUndo.disabled = undoStack.length === 0;
     setStatus(`Loaded "${name}"`);
-    loadRelationships(name);
   } catch (e) {
     setStatus(`Error loading map: ${e.message}`, true);
   }
@@ -986,85 +977,12 @@ async function deleteMap() {
     btnFind.disabled = true;
     btnDelete.disabled = true;
     jm.show({ meta: { name: "", author: "" }, format: "node_array", data: [] });
-    relList.innerHTML = "";
     await loadMapList();
   } catch (e) {
     setStatus(`Error: ${e.message}`, true);
   }
 }
 
-// --- Sidebar toggle (mobile) ---
-
-function toggleSidebar() {
-  sidebar.classList.toggle("open");
-  btnCloseSidebar.style.display = sidebar.classList.contains("open") ? "block" : "none";
-}
-
-// --- Relationships ---
-
-async function loadRelationships(name) {
-  try {
-    const res = await fetch(`${API}/maps/${encodeURIComponent(name)}/relationships`);
-    if (!res.ok) return;
-    const rels = await res.json();
-    renderRelationships(rels);
-  } catch { /* ignore */ }
-}
-
-function renderRelationships(rels) {
-  relList.innerHTML = "";
-  for (const r of rels) {
-    const li = document.createElement("li");
-    const label = r.title ? `"${r.title}"` : "";
-    li.innerHTML = `<span>${r.end1Id} ↔ ${r.end2Id} ${label}</span>
-      <span class="rel-remove" data-id="${r.id}" title="Remove">×</span>`;
-    relList.appendChild(li);
-  }
-  relList.querySelectorAll(".rel-remove").forEach((btn) => {
-    btn.addEventListener("click", () => removeRelationship(btn.dataset.id));
-  });
-}
-
-async function removeRelationship(relId) {
-  if (!currentMap) return;
-  try {
-    const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`);
-    const rels = await res.json();
-    const updated = rels.filter((r) => r.id !== relId);
-    await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(updated),
-    });
-    renderRelationships(updated);
-  } catch (e) {
-    setStatus(`Error: ${e.message}`, true);
-  }
-}
-
-async function addRelationship() {
-  if (!currentMap) return;
-  const end1 = document.getElementById("rel-end1").value.trim();
-  const end2 = document.getElementById("rel-end2").value.trim();
-  const title = document.getElementById("rel-title").value.trim();
-  if (!end1 || !end2) { setStatus("Both node IDs required", true); return; }
-  try {
-    const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`);
-    const rels = await res.json();
-    rels.push({ id: crypto.randomUUID().slice(0, 8), end1Id: end1, end2Id: end2, title: title || undefined });
-    await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/relationships`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(rels),
-    });
-    renderRelationships(rels);
-    document.getElementById("rel-end1").value = "";
-    document.getElementById("rel-end2").value = "";
-    document.getElementById("rel-title").value = "";
-  } catch (e) {
-    setStatus(`Error: ${e.message}`, true);
-  }
-}
 
 // --- Pinch-to-zoom (touch) ---
 
@@ -1110,8 +1028,6 @@ btnSave.addEventListener("click", openSaveModal);
 btnVersions.addEventListener("click", openVersionsModal);
 btnNew.addEventListener("click", createMap);
 btnDelete.addEventListener("click", deleteMap);
-btnSidebar.addEventListener("click", toggleSidebar);
-btnCloseSidebar.addEventListener("click", toggleSidebar);
 btnZoomIn.addEventListener("click", zoomIn);
 btnZoomOut.addEventListener("click", zoomOut);
 btnZoomFit.addEventListener("click", zoomFit);
@@ -1129,7 +1045,6 @@ btnCopy.addEventListener("click", copyNode);
 btnCut.addEventListener("click", cutNode);
 btnPaste.addEventListener("click", pasteNode);
 btnLink.addEventListener("click", createLink);
-btnAddRel.addEventListener("click", addRelationship);
 
 // Keyboard shortcuts
 document.addEventListener("keydown", (e) => {

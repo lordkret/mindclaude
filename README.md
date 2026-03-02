@@ -12,7 +12,7 @@ MCP server + web UI for mindmap-based structured thinking in Claude Code. Maps a
 ## Quick start
 
 ```bash
-git clone https://github.com/rafal-willautomate/mindclaude.git
+git clone https://github.com/lordkret/mindclaude.git
 cd mindclaude
 npm install
 npm run build
@@ -132,6 +132,29 @@ migrate_memory project="my-project" markdown_content="## Architecture\n- Compone
 ```
 
 Sections (`## `) are categorized into Context (architecture, deployment, API, files) or Memory (conventions, patterns, issues) branches.
+
+### Mindmap conventions
+
+When working with mindmaps, follow these conventions so maps stay consistent and easy to read:
+
+**Structure**
+- Every project map has three top-level branches: `Context`, `Memory`, `Sessions`
+- `Context` must always have a **"Project Purpose"** node as its first child — keep it updated with what the project does
+- `Context` = stable facts (architecture, files, deployment, API)
+- `Memory` = conventions, patterns, known bugs, insights
+
+**Node content rule**
+- **Multiple points → subnodes.** If content has two or more distinct items, create a child node for each rather than stuffing them into description/notes
+- **Single prose → description (notes).** A single sentence or short phrase that clarifies the node title goes in the description field
+
+**When to use description vs subnodes**
+
+| Content | Use |
+|---------|-----|
+| "Handles user auth via JWT" | Description (notes) |
+| Three bullet points | Subnodes |
+| A list of files | Subnodes |
+| One-line annotation | Description (notes) |
 
 ### Slash commands
 

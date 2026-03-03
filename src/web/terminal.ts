@@ -1,4 +1,7 @@
-import { spawn, ChildProcess } from "node:child_process";
+import { spawn, execSync, ChildProcess } from "node:child_process";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { existsSync } from "node:fs";
 import { generateShortId } from "../model/id.js";
 
 export interface TerminalSession {
@@ -22,6 +25,27 @@ function getRandomPort(): number {
   throw new Error("No available ports for terminal session");
 }
 
+// Resolve full path to claude binary — systemd services have a limited PATH
+function findClaude(): string {
+  // Try common locations
+  const candidates = [
+    join(homedir(), ".local", "bin", "claude"),
+    "/usr/local/bin/claude",
+    "/usr/bin/claude",
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  // Fall back to which
+  try {
+    return execSync("which claude", { encoding: "utf8" }).trim();
+  } catch {
+    return "claude"; // hope it's on PATH
+  }
+}
+
+const CLAUDE_PATH = findClaude();
+
 export function createTerminal(): { sessionId: string; port: number } {
   const sessionId = generateShortId();
   const port = getRandomPort();
@@ -30,7 +54,7 @@ export function createTerminal(): { sessionId: string; port: number } {
   const proc = spawn("ttyd", [
     "--port", String(port),
     "--base-path", basePath,
-    "claude",
+    CLAUDE_PATH,
   ], {
     stdio: "ignore",
     detached: false,

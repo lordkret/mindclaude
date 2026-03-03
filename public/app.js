@@ -36,6 +36,8 @@ const btnGlobal = document.getElementById("btn-global");
 const btnCopy = document.getElementById("btn-copy");
 const btnCut = document.getElementById("btn-cut");
 const btnPaste = document.getElementById("btn-paste");
+const btnApply = document.getElementById("btn-apply");
+const btnTerminal = document.getElementById("btn-terminal");
 
 function setStatus(msg, isError) {
   status.textContent = msg;
@@ -763,6 +765,7 @@ async function loadMap(name) {
   if (!name) {
     currentMap = null;
     btnSave.disabled = true;
+    btnApply.disabled = true;
     btnVersions.disabled = true;
     btnFind.disabled = true;
     btnDelete.disabled = true;
@@ -792,6 +795,7 @@ async function loadMap(name) {
     applyNodeTypes();
     updateGlobalButton();
     btnSave.disabled = false;
+    btnApply.disabled = false;
     btnVersions.disabled = false;
     btnFind.disabled = false;
     btnDelete.disabled = false;
@@ -877,6 +881,48 @@ saveComment.addEventListener("keydown", (e) => {
 saveModal.addEventListener("click", (e) => {
   if (e.target === saveModal) closeSaveModal();
 });
+
+// --- Apply (save + hint) ---
+
+async function doApply() {
+  if (!currentMap || !jm) return;
+  btnApply.disabled = true;
+  setStatus("Saving for apply...");
+
+  const data = jm.get_data("node_array");
+  const body = { ...data, comment: "apply" };
+
+  try {
+    const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    modifiedNodes.clear();
+    document.querySelectorAll("jmnode.node-modified").forEach(el => el.classList.remove("node-modified"));
+    setStatus("Saved — run /apply in Claude Code");
+  } catch (e) {
+    setStatus(`Error saving: ${e.message}`, true);
+  } finally {
+    btnApply.disabled = false;
+  }
+}
+
+// --- Terminal (spawn ttyd session) ---
+
+async function openTerminal() {
+  setStatus("Starting terminal...");
+  try {
+    const res = await fetch(`${API}/terminals`, { method: "POST" });
+    if (!res.ok) throw new Error(await res.text());
+    const { sessionId, path } = await res.json();
+    setStatus(`Terminal ${sessionId} started`);
+    window.open(path, "_blank");
+  } catch (e) {
+    setStatus(`Terminal error: ${e.message}`, true);
+  }
+}
 
 // --- Versions Modal ---
 
@@ -1100,6 +1146,7 @@ async function deleteMap() {
     currentMap = null;
     selector.value = "";
     btnSave.disabled = true;
+    btnApply.disabled = true;
     btnVersions.disabled = true;
     btnFind.disabled = true;
     btnDelete.disabled = true;
@@ -1196,6 +1243,8 @@ btnCopy.addEventListener("click", copyNode);
 btnCut.addEventListener("click", cutNode);
 btnPaste.addEventListener("click", pasteNode);
 btnLink.addEventListener("click", createLink);
+btnApply.addEventListener("click", doApply);
+btnTerminal.addEventListener("click", openTerminal);
 btnGlobal.addEventListener("click", () => {
   if (selector.querySelector('option[value="global"]')) {
     selector.value = "global";

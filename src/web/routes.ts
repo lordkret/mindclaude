@@ -7,6 +7,7 @@ import { IdMapper } from "../model/types.js";
 import { docToJsMind, jsMindToDoc, JsMindData } from "./converter.js";
 import { gitCommitAndPush, gitLog, gitShowFile } from "./git-ops.js";
 import { unlinkSync, writeFileSync } from "node:fs";
+import { createTerminal, listTerminals, killTerminal } from "./terminal.js";
 
 const router = Router();
 router.use(json());
@@ -196,6 +197,33 @@ router.put("/maps/:name/relationships", async (req, res) => {
   }
 
   res.json({ ok: true, git: gitResult });
+});
+
+// --- Terminal endpoints ---
+
+// POST /api/terminals — spawn a new ttyd session
+router.post("/terminals", (_req, res) => {
+  try {
+    const { sessionId, port } = createTerminal();
+    res.json({ sessionId, path: `/terminal/${sessionId}/`, port });
+  } catch (e) {
+    res.status(500).json({ error: (e as Error).message });
+  }
+});
+
+// GET /api/terminals — list active sessions
+router.get("/terminals", (_req, res) => {
+  res.json(listTerminals());
+});
+
+// DELETE /api/terminals/:id — kill a session
+router.delete("/terminals/:id", (req, res) => {
+  const killed = killTerminal(req.params.id);
+  if (killed) {
+    res.json({ ok: true });
+  } else {
+    res.status(404).json({ error: "Terminal session not found" });
+  }
 });
 
 export { router };

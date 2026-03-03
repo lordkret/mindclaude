@@ -407,6 +407,157 @@ export function registerSessionTools(server: McpServer): void {
   );
 
   server.tool(
+    "session_apply",
+    "Reload the mindmap and detect new/modified nodes since last apply — returns actionable changes",
+    {},
+    async () => {
+      // Pull latest maps from git remote
+      const pullResult = await gitPull();
+      const lines: string[] = [`Maps git pull: ${pullResult}`];
+
+      // Find active project map
+      let projectName: string | undefined;
+      let entry: OpenDocEntry | undefined;
+
+      for (const [name, e] of getAllOpenDocs()) {
+        if (e.sessionNodeId) {
+          projectName = name;
+          entry = e;
+          break;
+        }
+      }
+      if (!projectName) {
+        for (const [name, e] of getAllOpenDocs()) {
+          if (name !== "global") {
+            projectName = name;
+            entry = e;
+            break;
+          }
+        }
+      }
+
+      if (!projectName || !entry) {
+        return {
+          content: [{ type: "text" as const, text: "No project map is open. Use start_session first." }],
+          isError: true,
+        };
+      }
+
+      // Re-read the map from disk
+      const path = mapFilePath(projectName);
+      if (mapExists(projectName)) {
+        const sessionNodeId = entry.sessionNodeId;
+        const projectPath = entry.projectPath;
+        const { doc, idMapper } = readXMind(path);
+        entry.doc = doc;
+        entry.idMapper = idMapper;
+        entry.sessionNodeId = sessionNodeId;
+        entry.projectPath = projectPath;
+        lines.push(`Reloaded "${projectName}" from disk.`);
+      }
+
+      const doc = entry.doc;
+      const rootId = activeSheet(doc).rootTopic.id;
+      const sessionsNode = findChildByTitle(doc, rootId, "Sessions");
+      if (!sessionsNode) {
+        return {
+          content: [{ type: "text" as const, text: "Error: Sessions branch not found." }],
+          isError: true,
+        };
+      }
+
+      // Build current snapshot: { [nodeId]: "title\0notes" }
+      const currentSnapshot: Record<string, string> = {};
+      for (const [id, node] of doc.nodeIndex) {
+        currentSnapshot[id] = node.title + "\0" + (node.notes || "");
+      }
+
+      // Load previous snapshot from _apply_snapshot node
+      let snapshotNode = findChildByTitle(doc, sessionsNode.id, "_apply_snapshot");
+      let previousSnapshot: Record<string, string> = {};
+      if (snapshotNode?.notes) {
+        try {
+          previousSnapshot = JSON.parse(snapshotNode.notes);
+        } catch {
+          // corrupt snapshot, treat as empty
+        }
+      }
+
+      // Diff: find new and modified nodes
+      const newNodes: string[] = [];
+      const modifiedNodes: string[] = [];
+
+      for (const [id, content] of Object.entries(currentSnapshot)) {
+        // Skip the _apply_snapshot node itself and Sessions branch internals
+        const node = doc.nodeIndex.get(id)!;
+        if (node.title === "_apply_snapshot") continue;
+
+        if (!(id in previousSnapshot)) {
+          newNodes.push(id);
+        } else if (previousSnapshot[id] !== content) {
+          modifiedNodes.push(id);
+        }
+      }
+
+      // Build path-from-root for a node
+      function nodePath(nodeId: string): string {
+        const parts: string[] = [];
+        let current: string | undefined = nodeId;
+        while (current) {
+          const n = doc.nodeIndex.get(current);
+          if (n) parts.unshift(n.title);
+          current = doc.parentIndex.get(current);
+        }
+        return parts.join(" > ");
+      }
+
+      // Save current snapshot
+      if (!snapshotNode) {
+        snapshotNode = addNode(doc, sessionsNode.id, "_apply_snapshot");
+      }
+      editNode(doc, snapshotNode.id, { notes: JSON.stringify(currentSnapshot) });
+
+      // Save map with updated snapshot
+      writeXMind(doc, path, entry.idMapper);
+      try {
+        await gitCommitAndPush(path, projectName, "Update apply snapshot");
+      } catch {
+        // non-fatal
+      }
+
+      // Format output
+      if (newNodes.length === 0 && modifiedNodes.length === 0) {
+        lines.push("\nNo new or modified nodes since last /apply.");
+        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+      }
+
+      if (newNodes.length > 0) {
+        lines.push(`\n## New nodes (${newNodes.length}):`);
+        for (const id of newNodes) {
+          const node = doc.nodeIndex.get(id)!;
+          const pathStr = nodePath(id);
+          lines.push(`- **${pathStr}**`);
+          if (node.notes) lines.push(`  Notes: ${node.notes}`);
+        }
+      }
+
+      if (modifiedNodes.length > 0) {
+        lines.push(`\n## Modified nodes (${modifiedNodes.length}):`);
+        for (const id of modifiedNodes) {
+          const node = doc.nodeIndex.get(id)!;
+          const pathStr = nodePath(id);
+          lines.push(`- **${pathStr}**`);
+          if (node.notes) lines.push(`  Notes: ${node.notes}`);
+        }
+      }
+
+      lines.push("\nReview the above nodes and implement any actionable instructions.");
+
+      return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+    }
+  );
+
+  server.tool(
     "session_reload",
     "Re-read the mindmap from disk/repo and check if something needs attention",
     {},

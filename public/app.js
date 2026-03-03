@@ -882,12 +882,12 @@ saveModal.addEventListener("click", (e) => {
   if (e.target === saveModal) closeSaveModal();
 });
 
-// --- Apply (save + hint) ---
+// --- Apply (save + open terminal with /apply) ---
 
 async function doApply() {
   if (!currentMap || !jm) return;
   btnApply.disabled = true;
-  setStatus("Saving for apply...");
+  setStatus("Saving & launching apply...");
 
   const data = jm.get_data("node_array");
   const body = { ...data, comment: "apply" };
@@ -901,9 +901,19 @@ async function doApply() {
     if (!res.ok) throw new Error(await res.text());
     modifiedNodes.clear();
     document.querySelectorAll("jmnode.node-modified").forEach(el => el.classList.remove("node-modified"));
-    setStatus("Saved — run /apply in Claude Code");
+
+    // Open a terminal that starts claude with the /apply prompt
+    const termRes = await fetch(`${API}/terminals`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claudeArgs: ["-p", "/apply"] }),
+    });
+    if (!termRes.ok) throw new Error(await termRes.text());
+    const { path } = await termRes.json();
+    setStatus("Saved — apply terminal opened");
+    window.open(path, "_blank");
   } catch (e) {
-    setStatus(`Error saving: ${e.message}`, true);
+    setStatus(`Error: ${e.message}`, true);
   } finally {
     btnApply.disabled = false;
   }

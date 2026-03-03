@@ -202,9 +202,11 @@ router.put("/maps/:name/relationships", async (req, res) => {
 // --- Terminal endpoints ---
 
 // POST /api/terminals — spawn a new ttyd session
-router.post("/terminals", (_req, res) => {
+// Optional body: { claudeArgs: string[] } e.g. ["--resume"]
+router.post("/terminals", (req, res) => {
   try {
-    const { sessionId, port } = createTerminal();
+    const claudeArgs = req.body?.claudeArgs as string[] | undefined;
+    const { sessionId, port } = createTerminal(claudeArgs);
     res.json({ sessionId, path: `/terminal/${sessionId}/`, port });
   } catch (e) {
     res.status(500).json({ error: (e as Error).message });

@@ -46,16 +46,20 @@ function findClaude(): string {
 
 const CLAUDE_PATH = findClaude();
 
-export function createTerminal(): { sessionId: string; port: number } {
+export function createTerminal(claudeArgs?: string[]): { sessionId: string; port: number } {
   const sessionId = generateShortId();
   const port = getRandomPort();
   const basePath = `/terminal/${sessionId}`;
 
-  const proc = spawn("ttyd", [
+  const args = [
+    "--writable",
     "--port", String(port),
     "--base-path", basePath,
     CLAUDE_PATH,
-  ], {
+    ...(claudeArgs || []),
+  ];
+
+  const proc = spawn("ttyd", args, {
     stdio: "ignore",
     detached: false,
   });

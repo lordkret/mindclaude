@@ -134,8 +134,8 @@ jmnodes jmnode.node-type-code { border: 2px solid #0984e3 !important; }
 
 /* Mobile */
 @media (max-width: 768px) {
-  header { overflow: visible; }
-  .toolbar { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
+  header { overflow-x: hidden; overflow-y: auto; max-height: 50vh; z-index: 10; position: relative; }
+  .toolbar { flex-wrap: wrap; gap: 4px; padding-bottom: 4px; }
   .toolbar h1 { font-size: 15px; margin-right: 0; }
   select { min-width: 110px; font-size: 13px; padding: 5px 8px; }
   button { padding: 5px 10px; font-size: 12px; }

@@ -83,9 +83,10 @@ async function main() {
   // API routes
   app.use("/api", router);
 
-  // Terminal proxy — forward /terminal/:id/* to ttyd on its local port
+  // Terminal proxy — forward /terminal/:id/* HTTP requests to ttyd
   app.use("/terminal/:id", (req, res) => {
     const port = getTerminalPort(req.params.id);
+    console.log(`[proxy] ${req.method} ${req.originalUrl} -> port=${port}`);
     if (!port) {
       res.status(404).send("Terminal session not found");
       return;
@@ -105,7 +106,8 @@ async function main() {
       }
     );
 
-    proxyReq.on("error", () => {
+    proxyReq.on("error", (err) => {
+      console.log(`[proxy] error for ${req.originalUrl}: ${err.message}`);
       if (!res.headersSent) res.status(502).send("Terminal proxy error");
     });
 
@@ -116,8 +118,11 @@ async function main() {
     console.log(`MindClaude web server running on http://localhost:${PORT}`);
   });
 
-  // Handle WebSocket upgrade for terminal proxy
+  // WebSocket upgrade: raw TCP proxy to ttyd
+  // Express has NOT sent a 101 yet — we get the raw socket and must handle
+  // the full upgrade handshake ourselves by proxying to ttyd.
   server.on("upgrade", (req, socket: Socket, head) => {
+    console.log(`[ws-upgrade] ${req.url}`);
     const match = req.url?.match(/^\/terminal\/([^/]+)/);
     if (!match) { socket.destroy(); return; }
 
@@ -125,38 +130,70 @@ async function main() {
     const port = getTerminalPort(sessionId);
     if (!port) { socket.destroy(); return; }
 
-    if (!checkAuth(req.headers)) { socket.destroy(); return; }
+    if (!checkAuth(req.headers)) { console.log("[ws-upgrade] auth failed"); socket.destroy(); return; }
 
-    // Proxy the WebSocket upgrade to ttyd
+    // Build the raw HTTP upgrade request to send to ttyd
+    const upstreamHeaders: Record<string, string> = {
+      "Host": `127.0.0.1:${port}`,
+      "Upgrade": "websocket",
+      "Connection": "Upgrade",
+    };
+    for (const key of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions"]) {
+      const val = req.headers[key];
+      if (val) upstreamHeaders[key] = Array.isArray(val) ? val[0] : val;
+    }
+
+    console.log(`[ws-upgrade] proxying to 127.0.0.1:${port}`);
+
     const proxyReq = httpRequest({
       hostname: "127.0.0.1",
       port,
       path: req.url,
       method: "GET",
-      headers: req.headers,
+      headers: upstreamHeaders,
     });
 
-    proxyReq.on("upgrade", (proxyRes, proxySocket, proxyHead) => {
-      // Send the HTTP 101 response back to the client
-      let responseHead = `HTTP/${proxyRes.httpVersion} ${proxyRes.statusCode} ${proxyRes.statusMessage}\r\n`;
-      for (let i = 0; i < proxyRes.rawHeaders.length; i += 2) {
-        responseHead += `${proxyRes.rawHeaders[i]}: ${proxyRes.rawHeaders[i + 1]}\r\n`;
-      }
-      responseHead += "\r\n";
+    proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
+      console.log(`[ws-upgrade] ttyd accepted upgrade`);
 
-      socket.write(responseHead);
+      // Write the raw 101 response from ttyd back to the client socket
+      // We need to construct it from the proxyRes
+      let response = `HTTP/1.1 101 Switching Protocols\r\n`;
+      response += `Upgrade: websocket\r\n`;
+      response += `Connection: Upgrade\r\n`;
+      if (_proxyRes.headers["sec-websocket-accept"]) {
+        response += `Sec-WebSocket-Accept: ${_proxyRes.headers["sec-websocket-accept"]}\r\n`;
+      }
+      if (_proxyRes.headers["sec-websocket-protocol"]) {
+        response += `Sec-WebSocket-Protocol: ${_proxyRes.headers["sec-websocket-protocol"]}\r\n`;
+      }
+      response += `\r\n`;
+
+      socket.write(response);
       if (proxyHead.length > 0) socket.write(proxyHead);
 
-      // Bidirectional pipe
+      // Bidirectional pipe — raw WebSocket frames flow through
       proxySocket.pipe(socket);
       socket.pipe(proxySocket);
 
       proxySocket.on("error", () => socket.destroy());
       socket.on("error", () => proxySocket.destroy());
+      proxySocket.on("close", () => socket.destroy());
+      socket.on("close", () => proxySocket.destroy());
     });
 
-    proxyReq.on("error", () => socket.destroy());
+    proxyReq.on("response", (res) => {
+      console.log(`[ws-upgrade] ttyd returned HTTP ${res.statusCode} instead of upgrade`);
+      socket.destroy();
+    });
 
+    proxyReq.on("error", (err) => {
+      console.log(`[ws-upgrade] proxy error: ${err.message}`);
+      socket.destroy();
+    });
+
+    // Send any buffered head data
+    if (head.length > 0) proxyReq.write(head);
     proxyReq.end();
   });
 

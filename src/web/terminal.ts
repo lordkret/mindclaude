@@ -51,24 +51,48 @@ export function createTerminal(claudeArgs?: string[]): { sessionId: string; port
   const port = getRandomPort();
   const basePath = `/terminal/${sessionId}`;
 
+  // Build the command: use bash login shell to get full user environment
+  const claudeCmd = claudeArgs?.length
+    ? `${CLAUDE_PATH} ${claudeArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`
+    : CLAUDE_PATH;
+
   const args = [
     "--writable",
     "--port", String(port),
     "--base-path", basePath,
-    CLAUDE_PATH,
-    ...(claudeArgs || []),
+    "bash", "-l", "-c", claudeCmd,
   ];
 
+  console.log(`[terminal] spawning: ttyd ${args.join(" ")}`);
+
   const proc = spawn("ttyd", args, {
-    stdio: "ignore",
+    stdio: ["ignore", "pipe", "pipe"],
     detached: false,
+    env: {
+      ...process.env,
+      HOME: homedir(),
+      USER: process.env.USER || "rafal",
+      SHELL: "/bin/bash",
+      TERM: "xterm-256color",
+      PATH: `${join(homedir(), ".local", "bin")}:${join(homedir(), ".cargo", "bin")}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+    },
   });
 
-  proc.on("exit", () => {
+  proc.stdout?.on("data", (data: Buffer) => {
+    console.log(`[terminal ${sessionId} stdout] ${data.toString().trim()}`);
+  });
+
+  proc.stderr?.on("data", (data: Buffer) => {
+    console.log(`[terminal ${sessionId} stderr] ${data.toString().trim()}`);
+  });
+
+  proc.on("exit", (code, signal) => {
+    console.log(`[terminal ${sessionId}] exited code=${code} signal=${signal}`);
     sessions.delete(sessionId);
   });
 
-  proc.on("error", () => {
+  proc.on("error", (err) => {
+    console.log(`[terminal ${sessionId}] spawn error: ${err.message}`);
     sessions.delete(sessionId);
   });
 

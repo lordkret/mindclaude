@@ -73,6 +73,21 @@ function scrollNodeIntoView(nodeId) {
   const ctr = document.getElementById("jsmind-container");
   const nr = el.getBoundingClientRect();
   const cr = ctr.getBoundingClientRect();
+
+  // On mobile, center the node in the viewport
+  if (window.innerWidth <= 768) {
+    const nodeCX = (nr.left + nr.right) / 2;
+    const nodeCY = (nr.top + nr.bottom) / 2;
+    const viewCX = (cr.left + cr.right) / 2;
+    const viewCY = (cr.top + cr.bottom) / 2;
+    const dx = viewCX - nodeCX;
+    const dy = viewCY - nodeCY;
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      applyZoom(zoomScale, zoomOffsetX + dx, zoomOffsetY + dy);
+    }
+    return;
+  }
+
   const pad = 40;
   let dx = 0, dy = 0;
   if (nr.left < cr.left + pad) dx = cr.left + pad - nr.left;
@@ -710,7 +725,12 @@ function setupSelectionTracking() {
       btnPaste.disabled = !hasSelection || !clipboard;
 
       if (sel) {
-        openNodeEditor(sel);
+        if (longPressTriggered) {
+          longPressTriggered = false;
+          closeNodeEditor();
+        } else {
+          openNodeEditor(sel);
+        }
         setTimeout(() => scrollNodeIntoView(sel.id), 50);
       } else {
         closeNodeEditor();
@@ -1173,6 +1193,7 @@ async function deleteMap() {
 let pinchStartDist = 0;
 let pinchStartScale = 1;
 let longPressTimer = null;
+let longPressTriggered = false;
 
 function getTouchDist(e) {
   const [a, b] = [e.touches[0], e.touches[1]];
@@ -1182,6 +1203,7 @@ function getTouchDist(e) {
 const container = document.getElementById("jsmind-container");
 
 container.addEventListener("touchstart", (e) => {
+  longPressTriggered = false;
   if (e.touches.length === 2) {
     clearTimeout(longPressTimer); longPressTimer = null;
     e.preventDefault();
@@ -1198,11 +1220,13 @@ container.addEventListener("touchstart", (e) => {
       const nodeId = el.getAttribute("nodeid");
       longPressTimer = setTimeout(() => {
         longPressTimer = null;
+        longPressTriggered = true;
         if (!jm || !nodeId) return;
         const node = jm.get_node(nodeId);
         if (node && node.children && node.children.length > 0) {
           jm.toggle_node(node);
         }
+        closeNodeEditor();
       }, 600);
     }
   }

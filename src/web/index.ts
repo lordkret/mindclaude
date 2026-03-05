@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { timingSafeEqual } from "node:crypto";
 import { request as httpRequest } from "node:http";
-import type { Socket } from "node:net";
+import { connect as netConnect, Socket } from "node:net";
 import { router } from "./routes.js";
 import { ensureStorageDir } from "../storage.js";
 import { initGitRepo } from "./git-ops.js";
@@ -119,8 +119,8 @@ async function main() {
   });
 
   // WebSocket upgrade: raw TCP proxy to ttyd
-  // Express has NOT sent a 101 yet — we get the raw socket and must handle
-  // the full upgrade handshake ourselves by proxying to ttyd.
+  // We use a raw TCP connection so the entire HTTP 101 handshake flows
+  // through byte-for-byte, preserving Sec-WebSocket-Accept matching.
   server.on("upgrade", (req, socket: Socket, head) => {
     console.log(`[ws-upgrade] ${req.url}`);
     const match = req.url?.match(/^\/terminal\/([^/]+)/);
@@ -132,69 +132,36 @@ async function main() {
 
     if (!checkAuth(req.headers)) { console.log("[ws-upgrade] auth failed"); socket.destroy(); return; }
 
-    // Build the raw HTTP upgrade request to send to ttyd
-    const upstreamHeaders: Record<string, string> = {
-      "Host": `127.0.0.1:${port}`,
-      "Upgrade": "websocket",
-      "Connection": "Upgrade",
-    };
-    for (const key of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions"]) {
-      const val = req.headers[key];
-      if (val) upstreamHeaders[key] = Array.isArray(val) ? val[0] : val;
-    }
+    console.log(`[ws-upgrade] raw TCP proxy to 127.0.0.1:${port}`);
 
-    console.log(`[ws-upgrade] proxying to 127.0.0.1:${port}`);
+    const upstream = netConnect(port, "127.0.0.1", () => {
+      // Reconstruct the HTTP upgrade request and send it raw to ttyd
+      let rawReq = `GET ${req.url} HTTP/1.1\r\n`;
+      rawReq += `Host: 127.0.0.1:${port}\r\n`;
+      rawReq += `Upgrade: websocket\r\n`;
+      rawReq += `Connection: Upgrade\r\n`;
+      for (const key of ["sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions"]) {
+        const val = req.headers[key];
+        if (val) rawReq += `${key}: ${Array.isArray(val) ? val[0] : val}\r\n`;
+      }
+      rawReq += `\r\n`;
 
-    const proxyReq = httpRequest({
-      hostname: "127.0.0.1",
-      port,
-      path: req.url,
-      method: "GET",
-      headers: upstreamHeaders,
+      upstream.write(rawReq);
+      if (head.length > 0) upstream.write(head);
+
+      // Now pipe everything bidirectionally — the 101 response from ttyd
+      // flows back to Caddy with the correct Sec-WebSocket-Accept intact
+      upstream.pipe(socket);
+      socket.pipe(upstream);
     });
 
-    proxyReq.on("upgrade", (_proxyRes, proxySocket, proxyHead) => {
-      console.log(`[ws-upgrade] ttyd accepted upgrade`);
-
-      // Write the raw 101 response from ttyd back to the client socket
-      // We need to construct it from the proxyRes
-      let response = `HTTP/1.1 101 Switching Protocols\r\n`;
-      response += `Upgrade: websocket\r\n`;
-      response += `Connection: Upgrade\r\n`;
-      if (_proxyRes.headers["sec-websocket-accept"]) {
-        response += `Sec-WebSocket-Accept: ${_proxyRes.headers["sec-websocket-accept"]}\r\n`;
-      }
-      if (_proxyRes.headers["sec-websocket-protocol"]) {
-        response += `Sec-WebSocket-Protocol: ${_proxyRes.headers["sec-websocket-protocol"]}\r\n`;
-      }
-      response += `\r\n`;
-
-      socket.write(response);
-      if (proxyHead.length > 0) socket.write(proxyHead);
-
-      // Bidirectional pipe — raw WebSocket frames flow through
-      proxySocket.pipe(socket);
-      socket.pipe(proxySocket);
-
-      proxySocket.on("error", () => socket.destroy());
-      socket.on("error", () => proxySocket.destroy());
-      proxySocket.on("close", () => socket.destroy());
-      socket.on("close", () => proxySocket.destroy());
-    });
-
-    proxyReq.on("response", (res) => {
-      console.log(`[ws-upgrade] ttyd returned HTTP ${res.statusCode} instead of upgrade`);
+    upstream.on("error", (err) => {
+      console.log(`[ws-upgrade] upstream error: ${err.message}`);
       socket.destroy();
     });
-
-    proxyReq.on("error", (err) => {
-      console.log(`[ws-upgrade] proxy error: ${err.message}`);
-      socket.destroy();
-    });
-
-    // Send any buffered head data
-    if (head.length > 0) proxyReq.write(head);
-    proxyReq.end();
+    socket.on("error", () => upstream.destroy());
+    upstream.on("close", () => socket.destroy());
+    socket.on("close", () => upstream.destroy());
   });
 
   // Clean up terminal processes on exit

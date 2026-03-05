@@ -49,24 +49,6 @@ function basicAuth(req: Request, res: Response, next: NextFunction): void {
   res.status(401).send("Invalid credentials");
 }
 
-function checkAuth(headers: Record<string, string | string[] | undefined>): boolean {
-  if (!AUTH_USER || !AUTH_PASS) return true;
-  const header = headers.authorization;
-  if (!header || typeof header !== "string" || !header.startsWith("Basic ")) return false;
-  const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
-  const sep = decoded.indexOf(":");
-  if (sep === -1) return false;
-  const user = decoded.slice(0, sep);
-  const pass = decoded.slice(sep + 1);
-  const userBuf = Buffer.from(user);
-  const passBuf = Buffer.from(pass);
-  const expectedUser = Buffer.from(AUTH_USER);
-  const expectedPass = Buffer.from(AUTH_PASS);
-  const userOk = userBuf.length === expectedUser.length && timingSafeEqual(userBuf, expectedUser);
-  const passOk = passBuf.length === expectedPass.length && timingSafeEqual(passBuf, expectedPass);
-  return userOk && passOk;
-}
-
 async function main() {
   ensureStorageDir();
   await initGitRepo();
@@ -130,8 +112,9 @@ async function main() {
     const port = getTerminalPort(sessionId);
     if (!port) { socket.destroy(); return; }
 
-    if (!checkAuth(req.headers)) { console.log("[ws-upgrade] auth failed"); socket.destroy(); return; }
-
+    // Skip auth for terminal WS upgrades — the browser's WebSocket()
+    // constructor cannot send Authorization headers. The user already
+    // authenticated when loading the terminal HTML page via basic auth.
     console.log(`[ws-upgrade] raw TCP proxy to 127.0.0.1:${port}`);
 
     const upstream = netConnect(port, "127.0.0.1", () => {

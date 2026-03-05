@@ -906,7 +906,7 @@ async function doApply() {
     const termRes = await fetch(`${API}/terminals`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ claudeArgs: ["-p", "/apply"] }),
+      body: JSON.stringify({ claudeArgs: ["Run start_session for project mindclaude with project_path /home/rafal/projects/mindclaude, then call session_apply to detect and act on new/changed nodes."] }),
     });
     if (!termRes.ok) throw new Error(await termRes.text());
     const { path } = await termRes.json();

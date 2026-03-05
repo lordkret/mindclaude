@@ -488,9 +488,10 @@ export function registerSessionTools(server: McpServer): void {
       const modifiedNodes: string[] = [];
 
       for (const [id, content] of Object.entries(currentSnapshot)) {
-        // Skip the _apply_snapshot node itself and Sessions branch internals
         const node = doc.nodeIndex.get(id)!;
+        // Skip internal nodes and nodes already marked done
         if (node.title === "_apply_snapshot") continue;
+        if (node.labels?.includes("done")) continue;
 
         if (!(id in previousSnapshot)) {
           newNodes.push(id);
@@ -531,13 +532,17 @@ export function registerSessionTools(server: McpServer): void {
         return { content: [{ type: "text" as const, text: lines.join("\n") }] };
       }
 
+      const allIds: string[] = [];
+
       if (newNodes.length > 0) {
         lines.push(`\n## New nodes (${newNodes.length}):`);
         for (const id of newNodes) {
           const node = doc.nodeIndex.get(id)!;
+          const shortId = entry.idMapper!.longToShort.get(id) || id;
           const pathStr = nodePath(id);
-          lines.push(`- **${pathStr}**`);
+          lines.push(`- [${shortId}] **${pathStr}**`);
           if (node.notes) lines.push(`  Notes: ${node.notes}`);
+          allIds.push(shortId);
         }
       }
 
@@ -545,15 +550,78 @@ export function registerSessionTools(server: McpServer): void {
         lines.push(`\n## Modified nodes (${modifiedNodes.length}):`);
         for (const id of modifiedNodes) {
           const node = doc.nodeIndex.get(id)!;
+          const shortId = entry.idMapper!.longToShort.get(id) || id;
           const pathStr = nodePath(id);
-          lines.push(`- **${pathStr}**`);
+          lines.push(`- [${shortId}] **${pathStr}**`);
           if (node.notes) lines.push(`  Notes: ${node.notes}`);
+          allIds.push(shortId);
         }
       }
 
       lines.push("\nReview the above nodes and implement any actionable instructions.");
+      lines.push(`After completing each node, call mark_applied with its ID to mark it done.`);
+      lines.push(`Node IDs: ${allIds.join(", ")}`);
 
       return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+    }
+  );
+
+  server.tool(
+    "mark_applied",
+    "Mark one or more mindmap nodes as done after processing them",
+    {
+      node_ids: z.array(z.string()).describe("Short IDs of nodes to mark as done"),
+      map: z.string().optional().describe("Map name (defaults to active project map)"),
+    },
+    async ({ node_ids, map }) => {
+      // Find the project map
+      let projectName = map;
+      let entry: OpenDocEntry | undefined;
+
+      if (projectName) {
+        entry = getOpenDoc(projectName);
+      } else {
+        for (const [name, e] of getAllOpenDocs()) {
+          if (e.sessionNodeId) { projectName = name; entry = e; break; }
+        }
+        if (!projectName) {
+          for (const [name, e] of getAllOpenDocs()) {
+            if (name !== "global") { projectName = name; entry = e; break; }
+          }
+        }
+      }
+
+      if (!projectName || !entry) {
+        return { content: [{ type: "text" as const, text: "No project map is open." }], isError: true };
+      }
+
+      const doc = entry.doc;
+      const marked: string[] = [];
+
+      for (const shortId of node_ids) {
+        const longId = entry.idMapper!.shortToLong.get(shortId) || shortId;
+        const node = doc.nodeIndex.get(longId);
+        if (!node) continue;
+        const labels = node.labels || [];
+        if (!labels.includes("done")) {
+          labels.push("done");
+        }
+        editNode(doc, longId, { labels });
+        marked.push(shortId);
+      }
+
+      // Save and commit
+      const path = mapFilePath(projectName);
+      writeXMind(doc, path, entry.idMapper);
+      try {
+        await gitCommitAndPush(path, projectName, `Mark ${marked.length} node(s) as done`);
+      } catch {
+        // non-fatal
+      }
+
+      return {
+        content: [{ type: "text" as const, text: `Marked ${marked.length} node(s) as done: ${marked.join(", ")}` }],
+      };
     }
   );
 

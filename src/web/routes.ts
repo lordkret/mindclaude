@@ -10,7 +10,7 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { createTerminal, listTerminals, killTerminal } from "./terminal.js";
 
 const router = Router();
-router.use(json());
+router.use(json({ limit: "10mb" }));
 
 // GET /api/maps — list all maps
 router.get("/maps", (_req, res) => {

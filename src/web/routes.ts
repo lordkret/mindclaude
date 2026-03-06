@@ -71,6 +71,7 @@ router.put("/maps/:name", async (req, res) => {
     const existing = readXMind(path);
     const existingNodeCount = existing.doc.nodeIndex.size;
     const incomingNodeCount = jsMindData.data.length;
+    console.log(`[save] ${name}: incoming=${incomingNodeCount} existing=${existingNodeCount}`);
     // Safety: refuse to save if incoming data would delete >80% of nodes
     if (existingNodeCount > 5 && incomingNodeCount < existingNodeCount * 0.2 && req.query.force !== "true") {
       res.status(400).json({
@@ -81,6 +82,8 @@ router.put("/maps/:name", async (req, res) => {
     const result = jsMindToDoc(jsMindData, existing.doc, existing.idMapper);
     doc = result.doc;
     idMapper = result.idMapper;
+    const savedNodeCount = doc.nodeIndex.size;
+    console.log(`[save] ${name}: after merge=${savedNodeCount} (removed=${existingNodeCount - savedNodeCount + (savedNodeCount - incomingNodeCount)})`);
   } else {
     // New map from jsMind data
     doc = createDocument(name);

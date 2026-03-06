@@ -475,12 +475,32 @@ export function registerSessionTools(server: McpServer): void {
       // Load previous snapshot from _apply_snapshot node
       let snapshotNode = findChildByTitle(doc, sessionsNode.id, "_apply_snapshot");
       let previousSnapshot: Record<string, string> = {};
+      let firstRun = false;
       if (snapshotNode?.notes) {
         try {
           previousSnapshot = JSON.parse(snapshotNode.notes);
         } catch {
-          // corrupt snapshot, treat as empty
+          // corrupt snapshot, treat as first run
+          firstRun = true;
         }
+      } else {
+        firstRun = true;
+      }
+
+      // On first run, save baseline snapshot without reporting all existing nodes
+      if (firstRun) {
+        if (!snapshotNode) {
+          snapshotNode = addNode(doc, sessionsNode.id, "_apply_snapshot");
+        }
+        editNode(doc, snapshotNode.id, { notes: JSON.stringify(currentSnapshot) });
+        writeXMind(doc, path, entry.idMapper);
+        try {
+          await gitCommitAndPush(path, projectName!, "Initialize apply snapshot");
+        } catch {
+          // non-fatal
+        }
+        lines.push("\nFirst /apply run — baseline snapshot saved. Add or modify nodes, save, then run /apply again to detect changes.");
+        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
       }
 
       // Diff: find new and modified nodes

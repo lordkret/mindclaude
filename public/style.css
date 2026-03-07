@@ -115,7 +115,7 @@ jmnodes jmnode.multi-selected { background: var(--node-selected) !important; bor
 
 /* jsMind theme overrides */
 jmnodes { background: transparent !important; }
-jmnodes jmnode { background: var(--node-bg) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 6px !important; padding: 6px 12px !important; font-size: 14px !important; }
+jmnodes jmnode { background: var(--node-bg) !important; color: var(--text) !important; border: 1px solid var(--border) !important; border-radius: 6px !important; padding: 6px 12px !important; font-size: 14px !important; white-space: normal !important; word-wrap: break-word !important; overflow: visible !important; text-overflow: clip !important; }
 jmnodes jmnode:hover { border-color: var(--accent) !important; }
 jmnodes jmnode.selected { background: var(--node-selected) !important; border-color: var(--accent) !important; }
 jmnodes jmnode.root { background: var(--accent) !important; color: #fff !important; font-size: 16px !important; font-weight: bold; }

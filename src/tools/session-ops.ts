@@ -618,14 +618,13 @@ export function registerSessionTools(server: McpServer): void {
       const marked: string[] = [];
 
       for (const shortId of node_ids) {
-        const longId = entry.idMapper!.shortToLong.get(shortId) || shortId;
-        const node = doc.nodeIndex.get(longId);
+        const node = doc.nodeIndex.get(shortId);
         if (!node) continue;
         const labels = node.labels || [];
         if (!labels.includes("done")) {
           labels.push("done");
         }
-        editNode(doc, longId, { labels });
+        editNode(doc, shortId, { labels });
         marked.push(shortId);
       }
 

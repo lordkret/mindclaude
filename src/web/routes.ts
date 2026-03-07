@@ -5,12 +5,22 @@ import { writeXMind } from "../xmind/writer.js";
 import { createDocument, activeSheet, buildIndices } from "../model/mindmap.js";
 import { IdMapper } from "../model/types.js";
 import { docToJsMind, jsMindToDoc, JsMindData } from "./converter.js";
-import { gitCommitAndPush, gitLog, gitShowFile } from "./git-ops.js";
-import { unlinkSync, writeFileSync } from "node:fs";
+import { gitCommitAndPush, gitLog, gitShowFile, gitPull } from "./git-ops.js";
+import { unlinkSync, writeFileSync, readFileSync } from "node:fs";
 import { createTerminal, listTerminals, killTerminal } from "./terminal.js";
 
 const router = Router();
 router.use(json({ limit: "10mb" }));
+
+// POST /api/pull — git pull maps repo
+router.post("/pull", async (_req, res) => {
+  try {
+    const result = await gitPull();
+    res.json({ result });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // GET /api/maps — list all maps
 router.get("/maps", (_req, res) => {
@@ -200,6 +210,51 @@ router.put("/maps/:name/relationships", async (req, res) => {
   }
 
   res.json({ ok: true, git: gitResult });
+});
+
+// GET /api/maps/:name/download — raw .xmind file
+router.get("/maps/:name/download", (req, res) => {
+  const { name } = req.params;
+  if (!mapExists(name)) {
+    res.status(404).json({ error: `Map "${name}" not found` });
+    return;
+  }
+  const path = mapFilePath(name);
+  res.setHeader("Content-Disposition", `attachment; filename="${name}.xmind"`);
+  res.setHeader("Content-Type", "application/octet-stream");
+  res.send(readFileSync(path));
+});
+
+// POST /api/maps/:name/upload — replace map with uploaded .xmind file
+router.post("/maps/:name/upload", async (req, res) => {
+  const { name } = req.params;
+  const chunks: Buffer[] = [];
+  req.on("data", (chunk: Buffer) => chunks.push(chunk));
+  req.on("end", async () => {
+    try {
+      const buf = Buffer.concat(chunks);
+      if (buf.length < 4) {
+        res.status(400).json({ error: "Empty or invalid file" });
+        return;
+      }
+      const path = mapFilePath(name);
+      writeFileSync(path, buf);
+      // Verify it's a valid xmind file
+      const { doc, idMapper } = readXMind(path);
+      const jsMindData = docToJsMind(doc, idMapper);
+
+      let gitResult = "";
+      try {
+        gitResult = await gitCommitAndPush(path, name, `Upload ${name}.xmind`);
+      } catch (e) {
+        gitResult = `Git error: ${(e as Error).message}`;
+      }
+
+      res.json({ ok: true, git: gitResult, data: jsMindData });
+    } catch (e) {
+      res.status(400).json({ error: `Invalid xmind file: ${(e as Error).message}` });
+    }
+  });
 });
 
 // --- Terminal endpoints ---

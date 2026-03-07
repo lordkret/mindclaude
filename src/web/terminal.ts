@@ -52,6 +52,8 @@ export function createTerminal(claudeArgs?: string[]): { sessionId: string; port
   const basePath = `/terminal/${sessionId}`;
 
   // Build the command: use bash login shell to get full user environment
+  // Everything must be in a single string after "bash -l -c" since -c only
+  // takes one argument as the command string.
   const claudeCmd = claudeArgs?.length
     ? `${CLAUDE_PATH} ${claudeArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(" ")}`
     : CLAUDE_PATH;

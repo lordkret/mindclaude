@@ -31,6 +31,9 @@ const btnAddNode = document.getElementById("btn-add-node");
 const btnAddSibling = document.getElementById("btn-add-sibling");
 const btnDelNode = document.getElementById("btn-del-node");
 const btnFind = document.getElementById("btn-find");
+const btnDownload = document.getElementById("btn-download");
+const btnUpload = document.getElementById("btn-upload");
+const uploadInput = document.getElementById("upload-input");
 const btnTheme = document.getElementById("btn-theme");
 const btnGlobal = document.getElementById("btn-global");
 const btnCopy = document.getElementById("btn-copy");
@@ -250,8 +253,44 @@ function startUndoCapture() {
 async function reloadMap() {
   if (!currentMap) return;
   pushUndo(); // save current state before reload so user can undo
+  setStatus("Pulling latest...");
+  try {
+    await fetch("/api/pull", { method: "POST" });
+  } catch { /* non-fatal */ }
   await loadMap(currentMap);
   setStatus(`Reloaded "${currentMap}"`);
+}
+
+// --- Download / Upload ---
+
+function downloadMap() {
+  if (!currentMap) return;
+  const a = document.createElement("a");
+  a.href = `${API}/maps/${encodeURIComponent(currentMap)}/download`;
+  a.download = `${currentMap}.xmind`;
+  a.click();
+}
+
+async function uploadMap() {
+  const file = uploadInput.files[0];
+  uploadInput.value = "";
+  if (!file || !currentMap) return;
+  if (!confirm(`Replace "${currentMap}" with uploaded file?`)) return;
+  setStatus("Uploading...");
+  try {
+    const buf = await file.arrayBuffer();
+    const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: buf,
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error);
+    await loadMap(currentMap);
+    setStatus(`Uploaded and loaded "${currentMap}"`);
+  } catch (e) {
+    setStatus(`Upload error: ${e.message}`, true);
+  }
 }
 
 // --- Node description helpers ---
@@ -791,6 +830,8 @@ async function loadMap(name) {
     btnDelete.disabled = true;
     btnUndo.disabled = true;
     btnReload.disabled = true;
+    btnDownload.disabled = true;
+    btnUpload.disabled = true;
     undoStack.length = 0;
     closeNodeEditor();
     updateGlobalButton();
@@ -820,6 +861,8 @@ async function loadMap(name) {
     btnFind.disabled = false;
     btnDelete.disabled = false;
     btnReload.disabled = false;
+    btnDownload.disabled = false;
+    btnUpload.disabled = false;
     btnUndo.disabled = undoStack.length === 0;
     setStatus(`Loaded "${name}"`);
   } catch (e) {
@@ -1279,6 +1322,9 @@ btnPaste.addEventListener("click", pasteNode);
 btnLink.addEventListener("click", createLink);
 btnApply.addEventListener("click", doApply);
 btnTerminal.addEventListener("click", openTerminal);
+btnDownload.addEventListener("click", downloadMap);
+btnUpload.addEventListener("click", () => uploadInput.click());
+uploadInput.addEventListener("change", uploadMap);
 btnGlobal.addEventListener("click", () => {
   if (selector.querySelector('option[value="global"]')) {
     selector.value = "global";

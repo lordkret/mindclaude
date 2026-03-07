@@ -48,6 +48,52 @@ function setStatus(msg, isError) {
   if (!isError) setTimeout(() => { status.textContent = ""; }, 4000);
 }
 
+const toastContainer = document.getElementById("toast-container");
+
+function showToast({ title, message, suggestion, duration = 15000, type = "error" }) {
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = `
+    <div class="toast-header">
+      <span class="toast-title">${title || "Error"}</span>
+      <button class="toast-close">&times;</button>
+    </div>
+    <div class="toast-body">${message}</div>
+    ${suggestion ? `<div class="toast-suggestion">${suggestion}</div>` : ""}
+  `;
+  toast.querySelector(".toast-close").addEventListener("click", () => dismissToast(toast));
+  toastContainer.appendChild(toast);
+  if (duration > 0) {
+    setTimeout(() => dismissToast(toast), duration);
+  }
+  return toast;
+}
+
+function dismissToast(toast) {
+  if (!toast.parentNode) return;
+  toast.style.animation = "toast-out 0.3s ease forwards";
+  setTimeout(() => toast.remove(), 300);
+}
+
+/** Parse error response and show toast. Returns the error message string. */
+async function handleSaveError(res, context = "Save") {
+  let errorMsg = "Unknown error";
+  let suggestion = "";
+  try {
+    const body = await res.json();
+    errorMsg = body.error || errorMsg;
+    suggestion = body.suggestion || "";
+  } catch {
+    errorMsg = await res.text().catch(() => `HTTP ${res.status}`);
+  }
+  showToast({
+    title: `${context} Failed`,
+    message: errorMsg,
+    suggestion: suggestion || "Try reloading the map and saving again.",
+  });
+  return errorMsg;
+}
+
 // --- Zoom ---
 
 let zoomOffsetX = 0;
@@ -916,7 +962,12 @@ async function doSave() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      const errMsg = await handleSaveError(res, "Save");
+      closeSaveModal();
+      setStatus(`Save error`, true);
+      return;
+    }
     const result = await res.json();
     closeSaveModal();
     modifiedNodes.clear();
@@ -931,7 +982,12 @@ async function doSave() {
     }
   } catch (e) {
     closeSaveModal();
-    setStatus(`Error saving: ${e.message}`, true);
+    showToast({
+      title: "Save Failed",
+      message: e.message || "Network error",
+      suggestion: "Check your connection and try again.",
+    });
+    setStatus(`Save error`, true);
   }
 }
 
@@ -961,7 +1017,11 @@ async function doApply() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      await handleSaveError(res, "Apply Save");
+      setStatus("Apply save error", true);
+      return;
+    }
     modifiedNodes.clear();
     document.querySelectorAll("jmnode.node-modified").forEach(el => el.classList.remove("node-modified"));
 
@@ -971,12 +1031,21 @@ async function doApply() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ claudeArgs: ["Run start_session for project mindclaude with project_path /home/rafal/projects/mindclaude, then call session_apply to detect and act on new/changed nodes."] }),
     });
-    if (!termRes.ok) throw new Error(await termRes.text());
+    if (!termRes.ok) {
+      await handleSaveError(termRes, "Terminal");
+      setStatus("Terminal error", true);
+      return;
+    }
     const { path } = await termRes.json();
     setStatus("Saved — apply terminal opened");
     window.open(path, "_blank");
   } catch (e) {
-    setStatus(`Error: ${e.message}`, true);
+    showToast({
+      title: "Apply Failed",
+      message: e.message || "Network error",
+      suggestion: "Check your connection and try again.",
+    });
+    setStatus("Apply error", true);
   } finally {
     btnApply.disabled = false;
   }

@@ -6,7 +6,24 @@ import { createDocument, activeSheet, buildIndices } from "../model/mindmap.js";
 import { IdMapper } from "../model/types.js";
 import { docToJsMind, jsMindToDoc, JsMindData } from "./converter.js";
 import { gitCommitAndPush, gitLog, gitShowFile, gitPull } from "./git-ops.js";
-import { unlinkSync, writeFileSync, readFileSync } from "node:fs";
+import { unlinkSync, writeFileSync, readFileSync, appendFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+
+function logError(context: string, error: unknown, extra?: Record<string, unknown>): void {
+  const logPath = join(homedir(), ".mindclaude", "error.log");
+  const ts = new Date().toISOString();
+  const msg = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  const entry = [
+    `[${ts}] ${context}: ${msg}`,
+    ...(extra ? [`  Details: ${JSON.stringify(extra)}`] : []),
+    ...(stack ? [`  Stack: ${stack}`] : []),
+    "",
+  ].join("\n");
+  try { appendFileSync(logPath, entry); } catch { /* ignore log write errors */ }
+  console.error(entry);
+}
 import { createTerminal, listTerminals, killTerminal } from "./terminal.js";
 
 const router = Router();
@@ -69,50 +86,62 @@ router.put("/maps/:name", async (req, res) => {
   const jsMindData: JsMindData = rest.data ? rest : req.body;
 
   if (!jsMindData || !jsMindData.data || !Array.isArray(jsMindData.data)) {
-    res.status(400).json({ error: "Invalid jsMind data" });
+    logError("save", "Invalid jsMind data", { name, hasData: !!jsMindData?.data, dataType: typeof jsMindData?.data });
+    res.status(400).json({ error: "Invalid jsMind data", suggestion: "The map data is malformed. Try reloading the page." });
     return;
   }
 
-  const path = mapFilePath(name);
-  let doc;
-  let idMapper;
-
-  if (mapExists(name)) {
-    const existing = readXMind(path);
-    const existingNodeCount = existing.doc.nodeIndex.size;
-    const incomingNodeCount = jsMindData.data.length;
-    console.log(`[save] ${name}: incoming=${incomingNodeCount} existing=${existingNodeCount}`);
-    // Safety: refuse to save if incoming data would delete >80% of nodes
-    if (existingNodeCount > 5 && incomingNodeCount < existingNodeCount * 0.2 && req.query.force !== "true") {
-      res.status(400).json({
-        error: `Safety: save rejected. Incoming data has ${incomingNodeCount} nodes vs ${existingNodeCount} on disk. Reload and try again.`
-      });
-      return;
-    }
-    const result = jsMindToDoc(jsMindData, existing.doc, existing.idMapper);
-    doc = result.doc;
-    idMapper = result.idMapper;
-    const savedNodeCount = doc.nodeIndex.size;
-    console.log(`[save] ${name}: after merge=${savedNodeCount} (removed=${existingNodeCount - savedNodeCount + (savedNodeCount - incomingNodeCount)})`);
-  } else {
-    // New map from jsMind data
-    doc = createDocument(name);
-    const emptyMapper = { shortToLong: new Map<string, string>(), longToShort: new Map<string, string>() };
-    const result = jsMindToDoc(jsMindData, doc, emptyMapper);
-    doc = result.doc;
-    idMapper = result.idMapper;
-  }
-
-  writeXMind(doc, path, idMapper);
-
-  let gitResult = "";
   try {
-    gitResult = await gitCommitAndPush(path, name, comment || undefined);
-  } catch (e) {
-    gitResult = `Git error: ${(e as Error).message}`;
-  }
+    const path = mapFilePath(name);
+    let doc;
+    let idMapper;
 
-  res.json({ ok: true, git: gitResult });
+    if (mapExists(name)) {
+      const existing = readXMind(path);
+      const existingNodeCount = existing.doc.nodeIndex.size;
+      const incomingNodeCount = jsMindData.data.length;
+      console.log(`[save] ${name}: incoming=${incomingNodeCount} existing=${existingNodeCount}`);
+      // Safety: refuse to save if incoming data would delete >80% of nodes
+      if (existingNodeCount > 5 && incomingNodeCount < existingNodeCount * 0.2 && req.query.force !== "true") {
+        const msg = `Safety: save rejected. Incoming data has ${incomingNodeCount} nodes vs ${existingNodeCount} on disk.`;
+        logError("save-safety", msg, { name, incomingNodeCount, existingNodeCount });
+        res.status(400).json({
+          error: msg,
+          suggestion: "The browser has fewer nodes than the server. Click Reload to get the latest version, then try again."
+        });
+        return;
+      }
+      const result = jsMindToDoc(jsMindData, existing.doc, existing.idMapper);
+      doc = result.doc;
+      idMapper = result.idMapper;
+      const savedNodeCount = doc.nodeIndex.size;
+      console.log(`[save] ${name}: after merge=${savedNodeCount} (removed=${existingNodeCount - savedNodeCount + (savedNodeCount - incomingNodeCount)})`);
+    } else {
+      // New map from jsMind data
+      doc = createDocument(name);
+      const emptyMapper = { shortToLong: new Map<string, string>(), longToShort: new Map<string, string>() };
+      const result = jsMindToDoc(jsMindData, doc, emptyMapper);
+      doc = result.doc;
+      idMapper = result.idMapper;
+    }
+
+    writeXMind(doc, path, idMapper);
+
+    let gitResult = "";
+    try {
+      gitResult = await gitCommitAndPush(path, name, comment || undefined);
+    } catch (e) {
+      gitResult = `Git error: ${(e as Error).message}`;
+    }
+
+    res.json({ ok: true, git: gitResult });
+  } catch (e) {
+    logError("save", e, { name, nodeCount: jsMindData.data?.length });
+    res.status(500).json({
+      error: `Save failed: ${(e as Error).message}`,
+      suggestion: "An internal error occurred. Try reloading the map and saving again. Check ~/.mindclaude/error.log for details."
+    });
+  }
 });
 
 // DELETE /api/maps/:name

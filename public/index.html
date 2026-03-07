@@ -11,48 +11,65 @@
   <header>
     <div class="toolbar">
       <h1>MindClaude</h1>
-      <select id="map-selector">
-        <option value="">— Select a map —</option>
-      </select>
-      <button id="btn-global" style="display:none" title="Back to global map">← Global</button>
-      <div id="zoom-controls">
-        <button id="btn-zoom-out" title="Zoom out">−</button>
-        <span id="zoom-level">100%</span>
-        <button id="btn-zoom-in" title="Zoom in">+</button>
-        <button id="btn-zoom-fit" title="Fit to screen">Fit</button>
+
+      <div class="toolbar-section">
+        <span class="toolbar-label">Map</span>
+        <select id="map-selector">
+          <option value="">— Select a map —</option>
+        </select>
+        <button id="btn-global" style="display:none" title="Back to global map">← Global</button>
+        <button id="btn-new">New Map</button>
+        <button id="btn-delete" disabled>Delete</button>
+        <button id="btn-save" disabled>Save</button>
+        <button id="btn-reload" disabled title="Reload from server">Reload</button>
+        <div class="btn-group">
+          <button id="btn-download" disabled title="Download .xmind file">↓ DL</button>
+          <button id="btn-upload" disabled title="Upload .xmind file">↑ UL</button>
+        </div>
+        <input type="file" id="upload-input" accept=".xmind" style="display:none" />
+        <button id="btn-versions" disabled title="Version history">Versions</button>
       </div>
-      <div class="btn-group">
-        <button id="btn-collapse-all" title="Collapse all (show root + 1 level)">⊟ All</button>
-        <button id="btn-expand-all" title="Expand all nodes">⊞ All</button>
-        <button id="btn-collapse-sel" title="Collapse selected node">⊟ Sel</button>
-        <button id="btn-expand-sel" title="Expand selected node">⊞ Sel</button>
+
+      <div class="toolbar-section">
+        <span class="toolbar-label">View</span>
+        <div id="zoom-controls">
+          <button id="btn-zoom-out" title="Zoom out">−</button>
+          <span id="zoom-level">100%</span>
+          <button id="btn-zoom-in" title="Zoom in">+</button>
+          <button id="btn-zoom-fit" title="Fit to screen">Fit</button>
+        </div>
+        <div class="btn-group">
+          <button id="btn-collapse-all" title="Collapse all (show root + 1 level)">⊟ All</button>
+          <button id="btn-expand-all" title="Expand all nodes">⊞ All</button>
+          <button id="btn-collapse-sel" title="Collapse selected node">⊟ Sel</button>
+          <button id="btn-expand-sel" title="Expand selected node">⊞ Sel</button>
+        </div>
+        <button id="btn-find" disabled title="Find node (Ctrl+F)">Find</button>
+        <button id="btn-theme" title="Toggle light/dark theme">Light</button>
       </div>
-      <div class="btn-group">
-        <button id="btn-add-node" disabled title="Add child (Insert)">+ Child</button>
-        <button id="btn-add-sibling" disabled title="Add sibling (Enter)">+ Sib</button>
-        <button id="btn-del-node" disabled title="Delete (Del)">− Node</button>
+
+      <div class="toolbar-section">
+        <span class="toolbar-label">Edit</span>
+        <div class="btn-group">
+          <button id="btn-add-node" disabled title="Add child (Insert)">+ Child</button>
+          <button id="btn-add-sibling" disabled title="Add sibling (Enter)">+ Sib</button>
+          <button id="btn-del-node" disabled title="Delete (Del)">− Node</button>
+        </div>
+        <div class="btn-group">
+          <button id="btn-copy" disabled title="Copy (Ctrl+C)">Copy</button>
+          <button id="btn-cut" disabled title="Cut (Ctrl+X)">Cut</button>
+          <button id="btn-paste" disabled title="Paste (Ctrl+V)">Paste</button>
+        </div>
+        <button id="btn-link" disabled title="Link two selected nodes (Ctrl+L) — Ctrl+click two nodes first">Link</button>
+        <button id="btn-undo" disabled title="Undo last change (Ctrl+Z)">Undo</button>
       </div>
-      <button id="btn-find" disabled title="Find node (Ctrl+F)">Find</button>
-      <div class="btn-group">
-        <button id="btn-copy" disabled title="Copy (Ctrl+C)">Copy</button>
-        <button id="btn-cut" disabled title="Cut (Ctrl+X)">Cut</button>
-        <button id="btn-paste" disabled title="Paste (Ctrl+V)">Paste</button>
+
+      <div class="toolbar-section">
+        <span class="toolbar-label">Session</span>
+        <button id="btn-apply" disabled title="Save and hint to run /apply in Claude Code">Apply</button>
+        <button id="btn-terminal" title="Open Claude Code terminal">Terminal</button>
       </div>
-      <button id="btn-link" disabled title="Link two selected nodes (Ctrl+L) — Ctrl+click two nodes first">Link</button>
-      <button id="btn-undo" disabled title="Undo last change (Ctrl+Z)">Undo</button>
-      <button id="btn-reload" disabled title="Reload from server">Reload</button>
-      <button id="btn-save" disabled>Save</button>
-      <button id="btn-apply" disabled title="Save and hint to run /apply in Claude Code">Apply</button>
-      <button id="btn-versions" disabled title="Version history">Versions</button>
-      <button id="btn-terminal" title="Open Claude Code terminal">Terminal</button>
-      <div class="btn-group">
-        <button id="btn-download" disabled title="Download .xmind file">↓ DL</button>
-        <button id="btn-upload" disabled title="Upload .xmind file">↑ UL</button>
-      </div>
-      <input type="file" id="upload-input" accept=".xmind" style="display:none" />
-      <button id="btn-new">New Map</button>
-      <button id="btn-delete" disabled>Delete</button>
-      <button id="btn-theme" title="Toggle light/dark theme">Light</button>
+
       <span id="status"></span>
     </div>
   </header>

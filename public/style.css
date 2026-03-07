@@ -50,6 +50,11 @@ button:disabled { opacity: 0.35; cursor: default; }
 #main { flex: 1; display: flex; overflow: hidden; position: relative; }
 #jsmind-container { flex: 1; background: var(--bg-primary); overflow: hidden; touch-action: none; }
 
+/* Toolbar sections */
+.toolbar-section { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-left: 1px solid var(--border); }
+.toolbar-section:first-of-type { border-left: none; padding-left: 0; }
+.toolbar-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); writing-mode: vertical-lr; transform: rotate(180deg); line-height: 1; user-select: none; }
+
 /* Button groups */
 .btn-group { display: flex; gap: 0; }
 .btn-group button { border-radius: 0; border-right-width: 0; padding: 6px 10px; }
@@ -150,6 +155,8 @@ jmnodes jmnode.node-type-code { border: 2px solid #0984e3 !important; }
   header { overflow-x: hidden; overflow-y: auto; max-height: 50vh; z-index: 10; position: relative; }
   .toolbar { flex-wrap: wrap; gap: 4px; padding-bottom: 4px; }
   .toolbar h1 { font-size: 15px; margin-right: 0; }
+  .toolbar-section { flex-wrap: wrap; gap: 4px; padding: 0; border-left: none; }
+  .toolbar-label { display: none; }
   select { min-width: 110px; font-size: 13px; padding: 5px 8px; }
   button { padding: 5px 10px; font-size: 12px; }
   #status { display: none; }

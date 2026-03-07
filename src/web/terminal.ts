@@ -60,6 +60,7 @@ export function createTerminal(claudeArgs?: string[]): { sessionId: string; port
 
   const args = [
     "--writable",
+    "--once",
     "--port", String(port),
     "--base-path", basePath,
     "bash", "-l", "-c", claudeCmd,

@@ -7,6 +7,8 @@ import {
   createGlobalMap,
   findChildByTitle,
   addNode,
+  removeNode,
+  moveNode,
   editNode,
   setFolded,
   activeSheet,
@@ -477,14 +479,34 @@ export function registerSessionTools(server: McpServer): void {
       }
 
       // Load previous snapshot from _apply_snapshot node
-      let snapshotNode = findChildByTitle(doc, sessionsNode.id, "_apply_snapshot");
+      // Find ALL snapshot nodes (deduplicate if web saves created extras)
+      const snapshotNodes = sessionsNode.children.filter((c) => c.title === "_apply_snapshot");
+      let snapshotNode: MindMapNode | undefined;
       let previousSnapshot: Record<string, string> = {};
       let firstRun = false;
-      if (snapshotNode?.notes) {
-        try {
-          previousSnapshot = JSON.parse(snapshotNode.notes);
-        } catch {
-          // corrupt snapshot, treat as first run
+
+      if (snapshotNodes.length > 0) {
+        // Use the one with valid JSON notes, prefer latest (last in array)
+        for (let i = snapshotNodes.length - 1; i >= 0; i--) {
+          if (snapshotNodes[i].notes) {
+            try {
+              previousSnapshot = JSON.parse(snapshotNodes[i].notes!);
+              snapshotNode = snapshotNodes[i];
+              break;
+            } catch {
+              // corrupt, try next
+            }
+          }
+        }
+        // Remove duplicates (keep only the chosen one)
+        for (const sn of snapshotNodes) {
+          if (sn !== snapshotNode) {
+            removeNode(doc, sn.id);
+          }
+        }
+        if (!snapshotNode) {
+          // All were corrupt — reuse the first one
+          snapshotNode = snapshotNodes[0] || undefined;
           firstRun = true;
         }
       } else {
@@ -503,6 +525,7 @@ export function registerSessionTools(server: McpServer): void {
       // Structural node titles to skip (branch headers, not actionable)
       const structuralTitles = new Set([
         "_apply_snapshot", "Context", "Memory", "Tasks", "Sessions",
+        "Bugs to fix", "Features to add", "Improvements to add",
       ]);
 
       // Collect session node IDs to skip (sessions branch children)
@@ -591,12 +614,14 @@ export function registerSessionTools(server: McpServer): void {
 
   server.tool(
     "mark_applied",
-    "Mark one or more mindmap nodes as done after processing them",
+    "Mark one or more mindmap nodes as done after processing them. Use action='delete' to remove task nodes, 'done' to label them, or 'move' to relocate to a target branch.",
     {
       node_ids: z.array(z.string()).describe("Short IDs of nodes to mark as done"),
+      action: z.enum(["done", "delete", "move"]).default("delete").describe("Action: 'delete' removes the node, 'done' adds a done label, 'move' relocates to move_target"),
+      move_target: z.string().optional().describe("Title of the branch to move nodes to (e.g., 'Key Bugs Fixed'). Only used with action='move'."),
       map: z.string().optional().describe("Map name (defaults to active project map)"),
     },
-    async ({ node_ids, map }) => {
+    async ({ node_ids, action, move_target, map }) => {
       // Find the project map
       let projectName = map;
       let entry: OpenDocEntry | undefined;
@@ -619,30 +644,64 @@ export function registerSessionTools(server: McpServer): void {
       }
 
       const doc = entry.doc;
-      const marked: string[] = [];
+      const processed: string[] = [];
+
+      // For move action, find the target branch
+      let moveTargetNode: MindMapNode | undefined;
+      if (action === "move" && move_target) {
+        const rootId = activeSheet(doc).rootTopic.id;
+        // Search all top-level branches and their children for the target
+        const root = doc.nodeIndex.get(rootId);
+        if (root) {
+          for (const branch of root.children) {
+            if (branch.title === move_target) {
+              moveTargetNode = branch;
+              break;
+            }
+            const child = findChildByTitle(doc, branch.id, move_target);
+            if (child) {
+              moveTargetNode = child;
+              break;
+            }
+          }
+        }
+        if (!moveTargetNode) {
+          return { content: [{ type: "text" as const, text: `Move target "${move_target}" not found.` }], isError: true };
+        }
+      }
 
       for (const shortId of node_ids) {
         const node = doc.nodeIndex.get(shortId);
         if (!node) continue;
-        const labels = node.labels || [];
-        if (!labels.includes("done")) {
-          labels.push("done");
+
+        if (action === "delete") {
+          removeNode(doc, shortId);
+        } else if (action === "move" && moveTargetNode) {
+          moveNode(doc, shortId, moveTargetNode.id);
+          const labels = node.labels || [];
+          if (!labels.includes("done")) labels.push("done");
+          editNode(doc, shortId, { labels });
+        } else {
+          // action === "done"
+          const labels = node.labels || [];
+          if (!labels.includes("done")) labels.push("done");
+          editNode(doc, shortId, { labels });
         }
-        editNode(doc, shortId, { labels });
-        marked.push(shortId);
+        processed.push(shortId);
       }
 
       // Save and commit
       const path = mapFilePath(projectName);
       writeXMind(doc, path, entry.idMapper);
+      const actionVerb = action === "delete" ? "deleted" : action === "move" ? "moved" : "marked done";
       try {
-        await gitCommitAndPush(path, projectName, `Mark ${marked.length} node(s) as done`);
+        await gitCommitAndPush(path, projectName, `${actionVerb} ${processed.length} node(s)`);
       } catch {
         // non-fatal
       }
 
       return {
-        content: [{ type: "text" as const, text: `Marked ${marked.length} node(s) as done: ${marked.join(", ")}` }],
+        content: [{ type: "text" as const, text: `${processed.length} node(s) ${actionVerb}: ${processed.join(", ")}` }],
       };
     }
   );

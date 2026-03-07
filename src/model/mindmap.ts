@@ -226,6 +226,9 @@ export function createProjectMap(name: string): MindMapDocument {
   editNode(doc, purposeNode.id, { notes: "Describe what this project does" });
   addNode(doc, rootId, "Memory");
   addNode(doc, rootId, "Tasks");
+  addNode(doc, rootId, "Bugs to fix");
+  addNode(doc, rootId, "Features to add");
+  addNode(doc, rootId, "Improvements to add");
   addNode(doc, rootId, "Sessions");
   return doc;
 }

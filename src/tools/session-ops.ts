@@ -487,30 +487,29 @@ export function registerSessionTools(server: McpServer): void {
         firstRun = true;
       }
 
-      // On first run, save baseline snapshot without reporting all existing nodes
+      // On first run, use empty baseline so default nodes are reported as actionable
       if (firstRun) {
-        if (!snapshotNode) {
-          snapshotNode = addNode(doc, sessionsNode.id, "_apply_snapshot");
-        }
-        editNode(doc, snapshotNode.id, { notes: JSON.stringify(currentSnapshot) });
-        writeXMind(doc, path, entry.idMapper);
-        try {
-          await gitCommitAndPush(path, projectName!, "Initialize apply snapshot");
-        } catch {
-          // non-fatal
-        }
-        lines.push("\nFirst /apply run — baseline snapshot saved. Add or modify nodes, save, then run /apply again to detect changes.");
-        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        previousSnapshot = {};
       }
 
       // Diff: find new and modified nodes
       const newNodes: string[] = [];
       const modifiedNodes: string[] = [];
 
+      // Structural node titles to skip (branch headers, not actionable)
+      const structuralTitles = new Set([
+        "_apply_snapshot", "Context", "Memory", "Tasks", "Sessions",
+      ]);
+
+      // Collect session node IDs to skip (sessions branch children)
+      const sessionChildIds = new Set(sessionsNode.children.map((c) => c.id));
+
       for (const [id, content] of Object.entries(currentSnapshot)) {
         const node = doc.nodeIndex.get(id)!;
-        // Skip internal nodes and nodes already marked done
-        if (node.title === "_apply_snapshot") continue;
+        // Skip root, structural branch nodes, session nodes, and done nodes
+        if (id === rootId) continue;
+        if (structuralTitles.has(node.title)) continue;
+        if (sessionChildIds.has(id)) continue;
         if (node.labels?.includes("done")) continue;
 
         if (!(id in previousSnapshot)) {

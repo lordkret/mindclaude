@@ -18,21 +18,21 @@
 }
 
 body.light {
-  --bg-primary: #f0f2f5;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #e8eaed;
-  --border: #d0d4da;
-  --text: #1a1a2e;
-  --text-muted: #666;
-  --accent: #d63050;
-  --btn-bg: #e8eaed;
-  --btn-text: #1a1a2e;
-  --success: #2e8b57;
-  --overlay: rgba(0,0,0,0.3);
-  --node-bg: #ffffff;
-  --node-selected: #e8eaed;
-  --shadow: 0 1px 3px rgba(0,0,0,0.1);
-  --modified-glow: rgba(217, 119, 6, 0.5);
+  --bg-primary: #f0ece4;
+  --bg-secondary: #f7f4ee;
+  --bg-tertiary: #e5e0d6;
+  --border: #cdc6b8;
+  --text: #2c2a26;
+  --text-muted: #7a7568;
+  --accent: #c43e52;
+  --btn-bg: #e5e0d6;
+  --btn-text: #2c2a26;
+  --success: #3a8a5c;
+  --overlay: rgba(0,0,0,0.25);
+  --node-bg: #f7f4ee;
+  --node-selected: #e5e0d6;
+  --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  --modified-glow: rgba(196, 120, 20, 0.5);
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }

@@ -222,8 +222,10 @@ export function createProjectMap(name: string): MindMapDocument {
   const doc = createDocument(name);
   const rootId = activeSheet(doc).rootTopic.id;
   const contextNode = addNode(doc, rootId, "Context");
-  addNode(doc, contextNode.id, "Project Purpose");
+  const purposeNode = addNode(doc, contextNode.id, "Project Purpose");
+  editNode(doc, purposeNode.id, { notes: "Describe what this project does" });
   addNode(doc, rootId, "Memory");
+  addNode(doc, rootId, "Tasks");
   addNode(doc, rootId, "Sessions");
   return doc;
 }

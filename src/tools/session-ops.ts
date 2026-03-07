@@ -172,6 +172,10 @@ export function registerSessionTools(server: McpServer): void {
         setFolded(entry.doc, sessionChildren[i].id, true);
       }
 
+      // Save map so session node persists across reloads (e.g. session_apply)
+      const savePath = mapFilePath(project);
+      writeXMind(entry.doc, savePath, entry.idMapper);
+
       // Focus Context branch for rendering
       const contextNode = findChildByTitle(entry.doc, rootId, "Context");
       if (contextNode) {

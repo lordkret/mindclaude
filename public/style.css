@@ -53,7 +53,10 @@ button:disabled { opacity: 0.35; cursor: default; }
 /* Toolbar sections */
 .toolbar-section { display: flex; align-items: center; gap: 6px; padding: 0 8px; border-left: 1px solid var(--border); }
 .toolbar-section:first-of-type { border-left: none; padding-left: 0; }
-.toolbar-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); writing-mode: vertical-lr; transform: rotate(180deg); line-height: 1; user-select: none; }
+.toolbar-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); writing-mode: vertical-lr; transform: rotate(180deg); line-height: 1; user-select: none; cursor: grab; }
+.toolbar-section[draggable] { cursor: grab; }
+.toolbar-section.dragging { opacity: 0.4; }
+.toolbar-section.drag-over { border-left: 2px solid var(--accent, #4ea1f3); }
 
 /* Button groups */
 .btn-group { display: flex; gap: 0; }

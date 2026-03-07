@@ -1543,6 +1543,70 @@ if (window.visualViewport) {
   });
 }
 
+// --- Draggable toolbar sections ---
+(function setupToolbarDrag() {
+  const toolbar = document.querySelector(".toolbar");
+  const sections = () => toolbar.querySelectorAll(".toolbar-section");
+  let dragSrc = null;
+
+  function addDragHandlers(sec) {
+    sec.addEventListener("dragstart", (e) => {
+      dragSrc = sec;
+      sec.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", sec.dataset.section);
+    });
+    sec.addEventListener("dragend", () => {
+      sec.classList.remove("dragging");
+      sections().forEach((s) => s.classList.remove("drag-over"));
+      dragSrc = null;
+    });
+    sec.addEventListener("dragover", (e) => {
+      if (!dragSrc || dragSrc === sec) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      sec.classList.add("drag-over");
+    });
+    sec.addEventListener("dragleave", () => sec.classList.remove("drag-over"));
+    sec.addEventListener("drop", (e) => {
+      e.preventDefault();
+      sec.classList.remove("drag-over");
+      if (!dragSrc || dragSrc === sec) return;
+      const allSecs = [...sections()];
+      const fromIdx = allSecs.indexOf(dragSrc);
+      const toIdx = allSecs.indexOf(sec);
+      if (fromIdx < toIdx) {
+        sec.after(dragSrc);
+      } else {
+        sec.before(dragSrc);
+      }
+      saveToolbarOrder();
+    });
+  }
+
+  function saveToolbarOrder() {
+    const order = [...sections()].map((s) => s.dataset.section);
+    localStorage.setItem("toolbar-order", JSON.stringify(order));
+  }
+
+  function restoreToolbarOrder() {
+    const saved = localStorage.getItem("toolbar-order");
+    if (!saved) return;
+    try {
+      const order = JSON.parse(saved);
+      const statusEl = toolbar.querySelector("#status");
+      const sectionMap = {};
+      sections().forEach((s) => (sectionMap[s.dataset.section] = s));
+      order.forEach((key) => {
+        if (sectionMap[key]) toolbar.insertBefore(sectionMap[key], statusEl);
+      });
+    } catch { /* ignore corrupt data */ }
+  }
+
+  sections().forEach(addDragHandlers);
+  restoreToolbarOrder();
+})();
+
 // --- Init ---
 
 initJsMind();

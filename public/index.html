@@ -12,7 +12,7 @@
     <div class="toolbar">
       <h1>MindClaude</h1>
 
-      <div class="toolbar-section">
+      <div class="toolbar-section" draggable="true" data-section="map">
         <span class="toolbar-label">Map</span>
         <select id="map-selector">
           <option value="">— Select a map —</option>
@@ -30,7 +30,7 @@
         <button id="btn-versions" disabled title="Version history">Versions</button>
       </div>
 
-      <div class="toolbar-section">
+      <div class="toolbar-section" draggable="true" data-section="view">
         <span class="toolbar-label">View</span>
         <div id="zoom-controls">
           <button id="btn-zoom-out" title="Zoom out">−</button>
@@ -48,7 +48,7 @@
         <button id="btn-theme" title="Toggle light/dark theme">Light</button>
       </div>
 
-      <div class="toolbar-section">
+      <div class="toolbar-section" draggable="true" data-section="edit">
         <span class="toolbar-label">Edit</span>
         <div class="btn-group">
           <button id="btn-add-node" disabled title="Add child (Insert)">+ Child</button>
@@ -64,7 +64,7 @@
         <button id="btn-undo" disabled title="Undo last change (Ctrl+Z)">Undo</button>
       </div>
 
-      <div class="toolbar-section">
+      <div class="toolbar-section" draggable="true" data-section="session">
         <span class="toolbar-label">Session</span>
         <button id="btn-apply" disabled title="Save and hint to run /apply in Claude Code">Apply</button>
         <button id="btn-terminal" title="Open Claude Code terminal">Terminal</button>

@@ -55,6 +55,9 @@ async function main() {
 
   const app = express();
 
+  // Global JSON body parser with generous limit
+  app.use(express.json({ limit: "50mb" }));
+
   // Basic auth (enabled when env vars are set)
   app.use(basicAuth);
 

@@ -49,6 +49,17 @@ function setStatus(msg, isError) {
 }
 
 const toastContainer = document.getElementById("toast-container");
+const loaderOverlay = document.getElementById("loader-overlay");
+const loaderText = document.getElementById("loader-text");
+
+function showLoader(msg = "Loading...") {
+  loaderText.textContent = msg;
+  loaderOverlay.style.display = "flex";
+}
+
+function hideLoader() {
+  loaderOverlay.style.display = "none";
+}
 
 function showToast({ title, message, suggestion, duration = 15000, type = "error" }) {
   const toast = document.createElement("div");
@@ -299,7 +310,7 @@ function startUndoCapture() {
 async function reloadMap() {
   if (!currentMap) return;
   pushUndo(); // save current state before reload so user can undo
-  setStatus("Pulling latest...");
+  showLoader("Pulling latest from git...");
   try {
     await fetch("/api/pull", { method: "POST" });
   } catch { /* non-fatal */ }
@@ -322,7 +333,7 @@ async function uploadMap() {
   uploadInput.value = "";
   if (!file || !currentMap) return;
   if (!confirm(`Replace "${currentMap}" with uploaded file?`)) return;
-  setStatus("Uploading...");
+  showLoader("Uploading...");
   try {
     const buf = await file.arrayBuffer();
     const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/upload`, {
@@ -336,6 +347,8 @@ async function uploadMap() {
     setStatus(`Uploaded and loaded "${currentMap}"`);
   } catch (e) {
     setStatus(`Upload error: ${e.message}`, true);
+  } finally {
+    hideLoader();
   }
 }
 
@@ -885,6 +898,7 @@ async function loadMap(name) {
     return;
   }
 
+  showLoader(`Loading "${name}"...`);
   try {
     const res = await fetch(`${API}/maps/${encodeURIComponent(name)}`);
     if (!res.ok) throw new Error(await res.text());
@@ -913,6 +927,9 @@ async function loadMap(name) {
     setStatus(`Loaded "${name}"`);
   } catch (e) {
     setStatus(`Error loading map: ${e.message}`, true);
+    showToast({ title: "Load Failed", message: e.message, suggestion: "Check your connection and try again." });
+  } finally {
+    hideLoader();
   }
 }
 
@@ -956,6 +973,7 @@ async function doSave() {
   const comment = saveComment.value.trim();
   const body = { ...data, comment: comment || undefined };
 
+  showLoader("Saving...");
   try {
     const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}`, {
       method: "PUT",
@@ -988,6 +1006,8 @@ async function doSave() {
       suggestion: "Check your connection and try again.",
     });
     setStatus(`Save error`, true);
+  } finally {
+    hideLoader();
   }
 }
 
@@ -1006,7 +1026,7 @@ saveModal.addEventListener("click", (e) => {
 async function doApply() {
   if (!currentMap || !jm) return;
   btnApply.disabled = true;
-  setStatus("Saving & launching apply...");
+  showLoader("Saving & launching apply...");
 
   const data = jm.get_data("node_array");
   const body = { ...data, comment: "apply" };
@@ -1047,6 +1067,7 @@ async function doApply() {
     });
     setStatus("Apply error", true);
   } finally {
+    hideLoader();
     btnApply.disabled = false;
   }
 }
@@ -1054,7 +1075,7 @@ async function doApply() {
 // --- Terminal (spawn ttyd session) ---
 
 async function openTerminal() {
-  setStatus("Starting terminal...");
+  showLoader("Starting terminal...");
   try {
     const res = await fetch(`${API}/terminals`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
@@ -1063,6 +1084,8 @@ async function openTerminal() {
     window.open(path, "_blank");
   } catch (e) {
     setStatus(`Terminal error: ${e.message}`, true);
+  } finally {
+    hideLoader();
   }
 }
 
@@ -1130,7 +1153,7 @@ async function restoreVersion(sha, msg) {
   const shortSha = sha.slice(0, 7);
   if (!confirm(`Restore to version ${shortSha}?\n\n"${msg}"\n\nThis will overwrite current state and create a new commit.`)) return;
   closeVersionsModal();
-  setStatus("Restoring...");
+  showLoader("Restoring version...");
   try {
     const res = await fetch(`${API}/maps/${encodeURIComponent(currentMap)}/versions/${sha}/restore`, { method: "POST" });
     if (!res.ok) throw new Error(await res.text());
@@ -1145,6 +1168,8 @@ async function restoreVersion(sha, msg) {
     setStatus(`Restored to ${shortSha}`);
   } catch (e) {
     setStatus(`Restore failed: ${e.message}`, true);
+  } finally {
+    hideLoader();
   }
 }
 

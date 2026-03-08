@@ -230,6 +230,8 @@ export function createProjectMap(name: string): MindMapDocument {
   addNode(doc, rootId, "Features to add");
   addNode(doc, rootId, "Improvements to add");
   addNode(doc, rootId, "Sessions");
+  const speckitNode = addNode(doc, rootId, "Speckit");
+  addNode(doc, speckitNode.id, "Completed");
   return doc;
 }
 

@@ -4,6 +4,7 @@ import { registerNodeTools } from "./tools/node-ops.js";
 import { registerRelationshipTools } from "./tools/relationship-ops.js";
 import { registerNavigationTools } from "./tools/navigation.js";
 import { registerSessionTools } from "./tools/session-ops.js";
+import { registerSpeckitTools } from "./tools/speckit-ops.js";
 import { registerResources } from "./resources.js";
 import { registerPrompts } from "./prompts.js";
 
@@ -18,6 +19,7 @@ export function createServer(): McpServer {
   registerRelationshipTools(server);
   registerNavigationTools(server);
   registerSessionTools(server);
+  registerSpeckitTools(server);
   registerResources(server);
   registerPrompts(server);
 

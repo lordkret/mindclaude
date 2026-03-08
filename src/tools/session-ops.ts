@@ -526,6 +526,7 @@ export function registerSessionTools(server: McpServer): void {
       const structuralTitles = new Set([
         "_apply_snapshot", "Context", "Memory", "Tasks", "Sessions",
         "Bugs to fix", "Features to add", "Improvements to add",
+        "Speckit", "Constitution", "Completed",
       ]);
 
       // Collect session node IDs to skip (sessions branch children)

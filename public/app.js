@@ -276,6 +276,7 @@ function undo() {
   jm.show(snapshot);
   applyDescIndicators();
   applyNodeTypes();
+  applyTaskStatusClasses();
   applyModifiedGlow();
   btnUndo.disabled = undoStack.length === 0;
   setStatus("Undone");
@@ -410,8 +411,10 @@ function applyDescIndicators() {
 
 // --- Node Types ---
 
-const NODE_TYPE_CLASSES = ["node-type-project", "node-type-agent", "node-type-bg-agent", "node-type-mcp", "node-type-code"];
-const NODE_TYPE_ICONS = { project: "▣", agent: "◈", "bg-agent": "◇", mcp: "⚡", code: "⟨⟩" };
+const NODE_TYPE_CLASSES = ["node-type-project", "node-type-agent", "node-type-bg-agent", "node-type-mcp", "node-type-code", "node-type-spec-feature", "node-type-spec-task"];
+const NODE_TYPE_ICONS = { project: "▣", agent: "◈", "bg-agent": "◇", mcp: "⚡", code: "⟨⟩", "spec-feature": "📋", "spec-task": "☐" };
+const TASK_STATUS_CLASSES = ["task-in-progress", "task-done"];
+const PHASE_CLASSES = ["phase-specify", "phase-plan", "phase-tasks", "phase-implement", "phase-done"];
 
 function getNodeType(node) {
   if (!node || !node.data) return "";
@@ -442,6 +445,26 @@ function applyNodeTypes() {
     el.classList.remove(...NODE_TYPE_CLASSES);
     const t = getNodeType(node);
     if (t) el.classList.add("node-type-" + t);
+  });
+}
+
+function applyTaskStatusClasses() {
+  if (!jm || !jm.mind || !jm.mind.root) return;
+  forEachNode(jm.mind.root, 0, (node) => {
+    const el = getJmNodeElement(node.id);
+    if (!el) return;
+    el.classList.remove(...TASK_STATUS_CLASSES, ...PHASE_CLASSES);
+    const labels = (node.data && node.data.labels) || [];
+    // Task status
+    if (labels.includes("status:in-progress")) el.classList.add("task-in-progress");
+    if (labels.includes("done")) el.classList.add("task-done");
+    // Feature phase
+    for (const l of labels) {
+      if (l.startsWith("phase:")) {
+        const phase = l.slice(6);
+        if (PHASE_CLASSES.includes("phase-" + phase)) el.classList.add("phase-" + phase);
+      }
+    }
   });
 }
 
@@ -782,6 +805,7 @@ function applyNodeEditorChanges() {
     const display = buildDisplayTopic(newTitle, !!newDesc, newType);
     jm.update_node(node.id, display);
     applyNodeTypes();
+  applyTaskStatusClasses();
     markModified(node.id);
   }
 }
@@ -914,6 +938,7 @@ async function loadMap(name) {
     modifiedNodes.clear();
     applyDescIndicators();
     applyNodeTypes();
+  applyTaskStatusClasses();
     updateGlobalButton();
     btnSave.disabled = false;
     btnApply.disabled = false;
@@ -1163,6 +1188,7 @@ async function restoreVersion(sha, msg) {
       jm.show(result.data);
       applyDescIndicators();
       applyNodeTypes();
+  applyTaskStatusClasses();
       applyModifiedGlow();
     }
     setStatus(`Restored to ${shortSha}`);

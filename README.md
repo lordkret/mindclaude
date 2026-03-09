@@ -4,7 +4,7 @@ MCP server + web UI for mindmap-based structured thinking in Claude Code. Maps a
 
 ## What it does
 
-- **MCP Server** (stdio) — 25 tools for creating, editing, navigating, and searching mindmaps directly from Claude Code
+- **MCP Server** (stdio) — 30 tools for creating, editing, navigating, and searching mindmaps directly from Claude Code
 - **Web UI** — browser-based mindmap editor with jsMind, keyboard shortcuts, version history, find, themes
 - **Session tracking** — `start_session` / `end_session` tools that track what changed between Claude Code conversations
 - **Git-backed** — every save creates a git commit; optional push to a remote
@@ -174,6 +174,46 @@ Available commands:
 | `/session_end` | End the current session — reviews changes, calls `end_session` with summary, decisions, and files changed. Accepts optional arguments as the summary. |
 | `/session_reload` | Reload the mindmap from disk/repo, check for git changes, uncommitted files, and unpushed commits. |
 
+## Spec-kit integration
+
+MindClaude includes [spec-kit](https://github.com/speckit) slash commands for spec-driven development. The mindmap becomes the master dashboard for feature tracking — spec-kit generates markdown files on disk, and the mindmap shows visual status.
+
+### Installing spec-kit commands
+
+From your project root:
+
+```bash
+# Copy the spec-kit plugin (templates, scripts, constitution)
+cp -r /path/to/mindclaude/.specify .
+
+# Copy the slash commands
+mkdir -p .claude/commands
+cp /path/to/mindclaude/.claude/commands/speckit.*.md .claude/commands/
+```
+
+### Available spec-kit commands
+
+| Command | Description |
+|---------|-------------|
+| `/speckit.specify` | Create a feature specification from a natural language description |
+| `/speckit.clarify` | Ask targeted clarification questions about an existing spec |
+| `/speckit.plan` | Generate a technical implementation plan from a spec |
+| `/speckit.tasks` | Break a plan into dependency-ordered, executable tasks |
+| `/speckit.implement` | Execute tasks with automatic mindmap progress tracking |
+| `/speckit.checklist` | Generate a custom validation checklist for a feature |
+| `/speckit.analyze` | Cross-artifact consistency check across spec, plan, and tasks |
+| `/speckit.constitution` | Create or update project principles that guide all specs |
+| `/speckit.taskstoissues` | Convert tasks into GitHub issues |
+
+### Mindmap integration
+
+The `sync_speckit` and `update_speckit_task` MCP tools connect spec-kit to the mindmap:
+
+- **`sync_speckit`** — reads `specs/` directory, creates feature nodes (gold border) with task children (light blue border), sets phase labels
+- **`update_speckit_task`** — updates task status (`in-progress` → orange glow, `done` → strikethrough), auto-completes features when all tasks finish
+
+The slash commands call these tools automatically. Features progress through phases: specify → plan → tasks → implement → done, each with a distinct left-border color in the web UI.
+
 ## MCP tools reference
 
 ### Map lifecycle
@@ -218,8 +258,17 @@ Available commands:
 |------|-------------|
 | `start_session` | Start a tracked session for a project |
 | `end_session` | End session with summary |
+| `session_apply` | Reload map and detect new/modified nodes |
+| `session_reload` | Re-read map from disk and check status |
+| `mark_applied` | Mark nodes as done/delete/move after processing |
 | `init_global_map` | Create the global preferences map |
 | `migrate_memory` | Import markdown into a project map |
+
+### Spec-kit
+| Tool | Description |
+|------|-------------|
+| `sync_speckit` | Sync spec-kit features and tasks into the mindmap |
+| `update_speckit_task` | Update task status, auto-complete features |
 
 ## Architecture
 
@@ -243,7 +292,8 @@ src/
 │   ├── node-ops.ts       # Add/remove/move/edit node tools
 │   ├── relationship-ops.ts
 │   ├── navigation.ts     # Render/focus/fold/search tools
-│   └── session-ops.ts    # Session tracking + migration tools
+│   ├── session-ops.ts    # Session tracking + migration tools
+│   └── speckit-ops.ts    # Spec-kit sync + task status tools
 ├── web/
 │   ├── index.ts          # Express server (port 3917)
 │   ├── routes.ts         # REST API

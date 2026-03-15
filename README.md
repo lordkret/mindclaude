@@ -214,6 +214,163 @@ The `sync_speckit` and `update_speckit_task` MCP tools connect spec-kit to the m
 
 The slash commands call these tools automatically. Features progress through phases: specify → plan → tasks → implement → done, each with a distinct left-border color in the web UI.
 
+## Vault integration (Obsidian-compatible notes)
+
+MindClaude can sync mindmap nodes to markdown files in an Obsidian-compatible vault. Nodes marked with `vault:true` get a corresponding `.md` file with YAML frontmatter + markdown body.
+
+### How it works
+
+- **Map → Vault**: nodes with `vault:true` marker are written as `slug--nodeId.md` files
+- **Vault → Map**: edited `.md` files update the corresponding node (vault wins on body, map wins on structure)
+- **Bidirectional sync** via the `vault_sync` MCP tool or the Sync button in the web UI
+
+### Enabling vault on a node
+
+In the web UI, select a node and check the "Vault" checkbox. Or via MCP:
+
+```
+edit_node node_id="abc12345" markers=["vault:true"]
+```
+
+Then trigger a sync to write the file:
+
+```
+vault_sync project="my-project"
+```
+
+### Vault storage
+
+Files are stored in `~/.mindclaude/vault/projects/{project}/`. Override with:
+
+```bash
+export MINDCLAUDE_VAULT_DIR=/path/to/your/vault
+```
+
+The vault directory is a separate git repo. Initialize it for remote sync:
+
+```bash
+cd ~/.mindclaude/vault
+git init
+git remote add origin git@github.com:you/your-vault-repo.git
+```
+
+### Browsing vault notes
+
+Three options, from lightest to heaviest:
+
+**1. Built-in web UI** — `/vault.html` on the web server. Mobile-friendly, no extra setup. Browse, search, edit, and save notes directly in the browser.
+
+**2. Obsidian (Docker)** — full Obsidian editor in the browser via VNC. Best for desktop use. See [Obsidian setup](#obsidian-setup-optional) below.
+
+**3. Obsidian (native)** — open `~/.mindclaude/vault` as an Obsidian vault on your local machine. Best if you already use Obsidian.
+
+### Obsidian setup (optional)
+
+Run Obsidian in Docker using the included compose file:
+
+```bash
+docker compose -f docker-compose.obsidian.yml up -d
+```
+
+This starts [obsidian-remote](https://github.com/sytone/obsidian-remote) on port 3918, mounting the vault directory. Access it at `http://localhost:3918`.
+
+To make the Vault button in the web UI open Obsidian instead of the built-in vault browser:
+
+```bash
+export MINDCLAUDE_OBSIDIAN_URL=http://localhost:3918
+# or for remote access behind a reverse proxy:
+export MINDCLAUDE_OBSIDIAN_URL=https://obsidian.example.com
+```
+
+**Caddy reverse proxy for Obsidian:**
+```
+obsidian.example.com {
+    reverse_proxy localhost:3918
+}
+```
+
+### Vault MCP tools
+
+| Tool | Description |
+|------|-------------|
+| `vault_sync` | Bidirectional sync between map and vault |
+| `vault_write` | Write a specific node to vault |
+| `vault_read` | Read a vault note |
+| `vault_status` | List vault-enabled nodes and sync status |
+
+### Vault REST API
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/vault/` | List projects with vault directories |
+| GET | `/api/vault/:project` | List all notes in a project |
+| GET | `/api/vault/:project/:id` | Read a note by node ID |
+| PUT | `/api/vault/:project/:id` | Update a note |
+| POST | `/api/vault/:project/sync` | Trigger full bidirectional sync |
+
+## Setting up MindClaude on a new machine
+
+Quick checklist for getting MindClaude running on a work project:
+
+```bash
+# 1. Clone and build
+git clone https://github.com/lordkret/mindclaude.git
+cd mindclaude
+npm install && npm run build
+
+# 2. Register MCP server with Claude Code
+# Add to ~/.claude/claude_code_config.json (global) or .mcp.json (per-project):
+cat <<'EOF'
+{
+  "mcpServers": {
+    "mindclaude": {
+      "command": "node",
+      "args": ["/absolute/path/to/mindclaude/build/index.js"]
+    }
+  }
+}
+EOF
+
+# 3. (Optional) Start the web UI
+npm run start:web
+# Or with auth: MINDCLAUDE_USER=me MINDCLAUDE_PASS=secret npm run start:web
+
+# 4. (Optional) Sync maps/vault from a remote repo
+cd ~/.mindclaude/maps && git init && git remote add origin <your-maps-repo>
+cd ~/.mindclaude/vault && git init && git remote add origin <your-vault-repo>
+
+# 5. (Optional) Run Obsidian in Docker
+docker compose -f docker-compose.obsidian.yml up -d
+
+# 6. Add CLAUDE.md to your work project
+cat <<'CLEOF' > CLAUDE.md
+# Project: my-project
+
+This project uses MindClaude for memory. At conversation start:
+
+1. `start_session` with project="my-project" project_path="/path/to/project"
+2. Review reported changes — ask user if any need action
+3. Consult Context branch for architecture, Memory for conventions
+4. When done: `end_session` with summary of what was done
+CLEOF
+
+# 7. (Optional) Copy slash commands to your project
+mkdir -p .claude/commands
+cp /path/to/mindclaude/.claude/commands/session_end.md .claude/commands/
+cp /path/to/mindclaude/.claude/commands/session_reload.md .claude/commands/
+```
+
+### Environment variables reference
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MINDCLAUDE_DIR` | `~/.mindclaude/maps` | Maps storage directory |
+| `MINDCLAUDE_VAULT_DIR` | `~/.mindclaude/vault` | Vault storage directory |
+| `MINDCLAUDE_PORT` | `3917` | Web server port |
+| `MINDCLAUDE_USER` | *(empty — no auth)* | HTTP Basic Auth username |
+| `MINDCLAUDE_PASS` | *(empty — no auth)* | HTTP Basic Auth password |
+| `MINDCLAUDE_OBSIDIAN_URL` | *(empty)* | URL for Obsidian remote; vault button opens built-in UI if unset |
+
 ## MCP tools reference
 
 ### Map lifecycle
@@ -294,18 +451,27 @@ src/
 │   ├── navigation.ts     # Render/focus/fold/search tools
 │   ├── session-ops.ts    # Session tracking + migration tools
 │   └── speckit-ops.ts    # Spec-kit sync + task status tools
+├── vault/
+│   ├── storage.ts        # Vault filesystem paths
+│   ├── format.ts         # YAML frontmatter ↔ node data
+│   ├── sync.ts           # Bidirectional map ↔ vault sync
+│   └── git-ops.ts        # Vault git commit/push/pull
 ├── web/
 │   ├── index.ts          # Express server (port 3917)
 │   ├── routes.ts         # REST API
+│   ├── vault-routes.ts   # Vault REST API
 │   ├── converter.ts      # jsMind ↔ MindMapDocument
 │   └── git-ops.ts        # Git commit/push/pull/log
 ├── resources.ts          # MCP resources
 └── prompts.ts            # MCP prompts
 
 public/                   # Web UI (vanilla JS, no build step)
-├── index.html
+├── index.html            # Main mindmap editor
 ├── app.js
-└── style.css
+├── style.css
+├── vault.html            # Vault notes browser (mobile-friendly)
+├── vault.js
+└── vault.css
 ```
 
 ## License

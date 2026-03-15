@@ -7,6 +7,8 @@ import { writeXMind } from "../xmind/writer.js";
 import { listMapFiles, mapFilePath, mapExists } from "../storage.js";
 import { renderMap } from "../render/ascii.js";
 import { gitPull } from "../web/git-ops.js";
+import { syncMapToVault } from "../vault/sync.js";
+import { vaultCommitAndPush, vaultPull } from "../vault/git-ops.js";
 
 export interface OpenDocEntry {
   doc: MindMapDocument;
@@ -98,7 +100,28 @@ export function registerLifecycleTools(server: McpServer): void {
       }
       const path = mapFilePath(mapName);
       writeXMind(entry.doc, path, entry.idMapper);
-      return { content: [{ type: "text", text: `Saved "${mapName}" to ${path}` }] };
+
+      // Auto-sync vault-enabled nodes
+      let vaultMsg = "";
+      try {
+        const hasVaultNodes = [...entry.doc.nodeIndex.values()].some(
+          n => (n.markers || []).includes("vault:true")
+        );
+        if (hasVaultNodes) {
+          const vaultResult = syncMapToVault(entry.doc, mapName);
+          if (vaultResult.written.length > 0 || vaultResult.deleted.length > 0) {
+            await vaultCommitAndPush(
+              vaultResult.written,
+              `Save sync: ${vaultResult.written.length} written, ${vaultResult.deleted.length} deleted`
+            );
+            vaultMsg = `\nVault: ${vaultResult.written.length} written, ${vaultResult.deleted.length} deleted`;
+          }
+        }
+      } catch {
+        // non-fatal
+      }
+
+      return { content: [{ type: "text", text: `Saved "${mapName}" to ${path}${vaultMsg}` }] };
     }
   );
 
@@ -131,6 +154,7 @@ export function registerLifecycleTools(server: McpServer): void {
     {},
     async () => {
       const pullResult = await gitPull();
+      const vaultPullResult = await vaultPull();
       const reloaded: string[] = [];
       for (const [name, entry] of openDocs) {
         if (!mapExists(name)) continue;
@@ -147,7 +171,7 @@ export function registerLifecycleTools(server: McpServer): void {
       const reloadMsg = reloaded.length > 0
         ? `\nReloaded maps: ${reloaded.join(", ")}`
         : "\nNo open maps to reload.";
-      return { content: [{ type: "text", text: `Git pull: ${pullResult}${reloadMsg}` }] };
+      return { content: [{ type: "text", text: `Git pull: ${pullResult}\nVault pull: ${vaultPullResult}${reloadMsg}` }] };
     }
   );
 }

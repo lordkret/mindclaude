@@ -7,8 +7,10 @@ import { timingSafeEqual } from "node:crypto";
 import { request as httpRequest } from "node:http";
 import { connect as netConnect, Socket } from "node:net";
 import { router } from "./routes.js";
+import { vaultRouter } from "./vault-routes.js";
 import { ensureStorageDir } from "../storage.js";
 import { initGitRepo } from "./git-ops.js";
+import { initVaultRepo } from "../vault/git-ops.js";
 import { getTerminalPort, killAllTerminals } from "./terminal.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -52,6 +54,7 @@ function basicAuth(req: Request, res: Response, next: NextFunction): void {
 async function main() {
   ensureStorageDir();
   await initGitRepo();
+  await initVaultRepo();
 
   const app = express();
 
@@ -67,6 +70,12 @@ async function main() {
 
   // API routes
   app.use("/api", router);
+  app.use("/api/vault", vaultRouter);
+
+  // Config endpoint
+  app.get("/api/config", (_req, res) => {
+    res.json({ obsidianUrl: process.env.MINDCLAUDE_OBSIDIAN_URL || null });
+  });
 
   // Terminal proxy — forward /terminal/:id/* HTTP requests to ttyd
   app.use("/terminal/:id", (req, res) => {

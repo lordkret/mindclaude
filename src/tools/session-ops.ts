@@ -19,6 +19,11 @@ import { mapFilePath, mapExists } from "../storage.js";
 import { renderMap } from "../render/ascii.js";
 import { getOpenDoc, setOpenDoc, getAllOpenDocs, OpenDocEntry } from "./map-lifecycle.js";
 import { gitCommitAndPush, gitPull } from "../web/git-ops.js";
+import { syncMapToVault } from "../vault/sync.js";
+import { vaultCommitAndPush } from "../vault/git-ops.js";
+import { getSessionsVaultDir } from "../vault/storage.js";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 function exec(cmd: string, args: string[], cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -275,6 +280,41 @@ export function registerSessionTools(server: McpServer): void {
         // non-fatal
       }
 
+      // Write session note to vault
+      try {
+        const sessionsDir = getSessionsVaultDir(projectName);
+        const dateStr = new Date().toISOString().slice(0, 10);
+        const sessionNotePath = join(sessionsDir, `${dateStr}.md`);
+        const sessionNoteContent = [
+          "---",
+          `project: "${projectName}"`,
+          `date: "${new Date().toISOString()}"`,
+          "---",
+          "",
+          `# Session ${dateStr}`,
+          "",
+          `## Summary`,
+          summary,
+          ...(decisions ? ["", "## Decisions", decisions] : []),
+          ...(files_changed ? ["", "## Files Changed", files_changed] : []),
+          "",
+        ].join("\n");
+        writeFileSync(sessionNotePath, sessionNoteContent, "utf-8");
+        await vaultCommitAndPush([sessionNotePath], `Session note: ${dateStr}`).catch(() => {});
+      } catch {
+        // non-fatal
+      }
+
+      // Sync vault-enabled nodes
+      try {
+        const vaultResult = syncMapToVault(entry.doc, projectName);
+        if (vaultResult.written.length > 0) {
+          await vaultCommitAndPush(vaultResult.written, `End session vault sync: ${vaultResult.written.length} files`).catch(() => {});
+        }
+      } catch {
+        // non-fatal
+      }
+
       // Clear session
       entry.sessionNodeId = undefined;
 
@@ -526,7 +566,7 @@ export function registerSessionTools(server: McpServer): void {
       const structuralTitles = new Set([
         "_apply_snapshot", "Context", "Memory", "Tasks", "Sessions",
         "Bugs to fix", "Features to add", "Improvements to add",
-        "Speckit", "Constitution", "Completed",
+        "Speckit", "Constitution", "Completed", "Vault",
       ]);
 
       // Collect session node IDs to skip (sessions branch children)

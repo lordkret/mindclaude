@@ -161,6 +161,7 @@ jmnodes jmnode.node-type-mcp { border: 2px solid #00b894 !important; }
 jmnodes jmnode.node-type-code { border: 2px solid #0984e3 !important; }
 jmnodes jmnode.node-type-spec-feature { border: 2px solid #fdcb6e !important; }
 jmnodes jmnode.node-type-spec-task { border: 2px solid #74b9ff !important; }
+jmnodes jmnode.node-vault { border-left: 3px solid #7c3aed !important; }
 jmnodes jmnode.task-in-progress { border-color: #ffa502 !important; box-shadow: 0 0 6px rgba(255,165,2,0.4) !important; }
 jmnodes jmnode.task-done { opacity: 0.5; text-decoration: line-through; }
 jmnodes jmnode.phase-specify { border-left: 4px solid #a29bfe !important; }

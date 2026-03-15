@@ -1,0 +1,12 @@
+services:
+  obsidian:
+    image: ghcr.io/sytone/obsidian-remote:latest
+    container_name: mindclaude-obsidian
+    restart: unless-stopped
+    ports:
+      - "3918:8080"
+    volumes:
+      - ${HOME}/.mindclaude/vault:/vaults/mindclaude
+    environment:
+      - PUID=1000
+      - PGID=1000

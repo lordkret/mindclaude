@@ -41,6 +41,8 @@ const btnCut = document.getElementById("btn-cut");
 const btnPaste = document.getElementById("btn-paste");
 const btnApply = document.getElementById("btn-apply");
 const btnTerminal = document.getElementById("btn-terminal");
+const btnVault = document.getElementById("btn-vault");
+const nodeVaultCheck = document.getElementById("node-vault-check");
 
 function setStatus(msg, isError) {
   status.textContent = msg;
@@ -448,6 +450,37 @@ function applyNodeTypes() {
   });
 }
 
+// --- Vault indicator ---
+
+function getNodeVault(node) {
+  if (!node || !node.data) return false;
+  let markers = node.data.markers;
+  if (typeof markers === "string") { try { markers = JSON.parse(markers); } catch { return false; } }
+  if (!Array.isArray(markers)) return false;
+  return markers.includes("vault:true");
+}
+
+function setNodeVault(node, enabled) {
+  if (!node) return;
+  if (!node.data) node.data = {};
+  let markers = node.data.markers;
+  if (typeof markers === "string") { try { markers = JSON.parse(markers); } catch { markers = []; } }
+  if (!Array.isArray(markers)) markers = [];
+  markers = markers.filter(m => m !== "vault:true");
+  if (enabled) markers.push("vault:true");
+  node.data.markers = markers.length > 0 ? JSON.stringify(markers) : undefined;
+  if (!node.data.markers) delete node.data.markers;
+}
+
+function applyVaultIndicator() {
+  if (!jm || !jm.mind || !jm.mind.root) return;
+  forEachNode(jm.mind.root, 0, (node) => {
+    const el = getJmNodeElement(node.id);
+    if (!el) return;
+    el.classList.toggle("node-vault", getNodeVault(node));
+  });
+}
+
 function applyTaskStatusClasses() {
   if (!jm || !jm.mind || !jm.mind.root) return;
   forEachNode(jm.mind.root, 0, (node) => {
@@ -766,6 +799,7 @@ function openNodeEditor(node) {
   nodeTitleInput.value = getPlainTitle(node);
   nodeTypeSelect.value = getNodeType(node);
   nodeDescInput.value = getNodeDesc(node);
+  nodeVaultCheck.checked = getNodeVault(node);
   nodeEditor.style.display = "flex";
   nodeEditor.classList.remove("expanded");
   nodeEditorExpand.innerHTML = "&#x2922;"; // expand icon
@@ -798,13 +832,18 @@ function applyNodeEditorChanges() {
   const oldDesc = getNodeDesc(node);
   const oldType = getNodeType(node);
 
-  if (newTitle !== oldTitle || newDesc !== oldDesc || newType !== oldType) {
+  const newVault = nodeVaultCheck.checked;
+  const oldVault = getNodeVault(node);
+
+  if (newTitle !== oldTitle || newDesc !== oldDesc || newType !== oldType || newVault !== oldVault) {
     pushUndo();
     setNodeDesc(node, newDesc);
     setNodeType(node, newType);
+    setNodeVault(node, newVault);
     const display = buildDisplayTopic(newTitle, !!newDesc, newType);
     jm.update_node(node.id, display);
     applyNodeTypes();
+    applyVaultIndicator();
   applyTaskStatusClasses();
     markModified(node.id);
   }
@@ -813,6 +852,7 @@ function applyNodeEditorChanges() {
 nodeTitleInput.addEventListener("input", applyNodeEditorChanges);
 nodeDescInput.addEventListener("input", applyNodeEditorChanges);
 nodeTypeSelect.addEventListener("change", applyNodeEditorChanges);
+nodeVaultCheck.addEventListener("change", applyNodeEditorChanges);
 nodeEditorClose.addEventListener("click", () => {
   closeNodeEditor();
   if (jm) jm.select_clear();
@@ -938,6 +978,7 @@ async function loadMap(name) {
     modifiedNodes.clear();
     applyDescIndicators();
     applyNodeTypes();
+    applyVaultIndicator();
   applyTaskStatusClasses();
     updateGlobalButton();
     btnSave.disabled = false;
@@ -1442,6 +1483,19 @@ btnPaste.addEventListener("click", pasteNode);
 btnLink.addEventListener("click", createLink);
 btnApply.addEventListener("click", doApply);
 btnTerminal.addEventListener("click", openTerminal);
+btnVault.addEventListener("click", async () => {
+  try {
+    const res = await fetch(`${API}/config`);
+    const config = await res.json();
+    if (config.obsidianUrl) {
+      window.open(config.obsidianUrl, "_blank");
+    } else {
+      setStatus("Obsidian URL not configured (set MINDCLAUDE_OBSIDIAN_URL)", true);
+    }
+  } catch (e) {
+    setStatus("Could not fetch config: " + e.message, true);
+  }
+});
 btnDownload.addEventListener("click", downloadMap);
 btnUpload.addEventListener("click", () => uploadInput.click());
 uploadInput.addEventListener("change", uploadMap);

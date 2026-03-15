@@ -10,3 +10,5 @@ services:
     environment:
       - PUID=1000
       - PGID=1000
+      - CUSTOM_USER=admin
+      - PASSWORD=14Maupoow!

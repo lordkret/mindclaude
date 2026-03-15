@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MindClaude Vault</title>
+  <link rel="stylesheet" href="vault.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <header id="top-bar">
+    <div class="bar-left">
+      <select id="project-selector"><option value="">Loading…</option></select>
+      <button id="btn-sync" title="Sync vault">Sync</button>
+      <button id="btn-search-toggle" title="Search notes">Search</button>
+    </div>
+    <div class="bar-right">
+      <a href="/" class="btn-link" title="Back to mindmap">Map</a>
+      <button id="btn-theme" title="Toggle theme">Light</button>
+    </div>
+  </header>
+
+  <div id="search-bar" class="hidden">
+    <input type="text" id="search-input" placeholder="Filter notes…" autocomplete="off">
+  </div>
+
+  <main id="app">
+    <aside id="note-list">
+      <div id="note-list-inner"></div>
+      <div id="empty-state" class="hidden">No notes found.</div>
+    </aside>
+
+    <section id="note-detail" class="hidden">
+      <div id="detail-header">
+        <button id="btn-back" class="mobile-only" title="Back to list">&larr; Back</button>
+        <h2 id="detail-title"></h2>
+        <div id="detail-actions">
+          <button id="btn-edit">Edit</button>
+        </div>
+      </div>
+      <div id="detail-body">
+        <div id="rendered-content"></div>
+      </div>
+      <div id="edit-area" class="hidden">
+        <textarea id="edit-textarea" spellcheck="true"></textarea>
+        <div id="edit-buttons">
+          <button id="btn-save" class="btn-primary">Save</button>
+          <button id="btn-cancel">Cancel</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-container"></div>
+  <script src="vault.js"></script>
+</body>
+</html>

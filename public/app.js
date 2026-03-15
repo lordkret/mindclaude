@@ -1490,7 +1490,7 @@ btnVault.addEventListener("click", async () => {
     if (config.obsidianUrl) {
       window.open(config.obsidianUrl, "_blank");
     } else {
-      setStatus("Obsidian URL not configured (set MINDCLAUDE_OBSIDIAN_URL)", true);
+      window.open("/vault.html", "_blank");
     }
   } catch (e) {
     setStatus("Could not fetch config: " + e.message, true);

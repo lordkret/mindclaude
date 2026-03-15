@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { getProjectVaultDir } from "../vault/storage.js";
+import { getVaultDir, getProjectVaultDir } from "../vault/storage.js";
 import { markdownToNodeData } from "../vault/format.js";
 import { readXMind } from "../xmind/reader.js";
 import { writeXMind } from "../xmind/writer.js";
@@ -11,6 +11,20 @@ import { vaultCommitAndPush } from "../vault/git-ops.js";
 import { gitCommitAndPush } from "./git-ops.js";
 
 const vaultRouter = Router();
+
+// GET /api/vault/ — list all projects with vault directories
+vaultRouter.get("/", (_req, res) => {
+  const projectsDir = join(getVaultDir(), "projects");
+  if (!existsSync(projectsDir)) {
+    res.json([]);
+    return;
+  }
+  const entries = readdirSync(projectsDir, { withFileTypes: true });
+  const projects = entries
+    .filter(e => e.isDirectory())
+    .map(e => ({ name: e.name }));
+  res.json(projects);
+});
 
 // GET /api/vault/:project — list vault notes
 vaultRouter.get("/:project", (req, res) => {

@@ -42,7 +42,7 @@ vaultRouter.get("/:project", (req, res) => {
       filename: f,
       id: data?.id || null,
       title: data?.title || f,
-      synced_at: data?.synced_at || null,
+      synced_at: null,
     };
   });
   res.json(notes);

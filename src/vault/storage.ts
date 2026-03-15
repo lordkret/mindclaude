@@ -26,6 +26,7 @@ export function getSessionsVaultDir(project: string): string {
 
 export function slugify(title: string): string {
   return title
+    .replace(/<[^>]*>/g, "")  // strip HTML tags before slugifying
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
